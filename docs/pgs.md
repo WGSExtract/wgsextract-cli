@@ -42,8 +42,10 @@ ID emits `pgs_uncurated_score`. A Catalog score whose authors set their own
 licence emits `pgs_license_restricted` with it, unless the licence only asks
 for attribution (CC BY 4.0). The `bmi` score, PGS005198, is the GIANT
 consortium's multi-ancestry score (Smit et al. 2025, Nat Med), under CC BY 4.0.
-It replaced PGS000027 (Khera et al. 2019), which is only "freely available to
-the academic community for research use"
+It replaced PGS000027 (Khera et al. 2019). That legacy score is
+**academic-research-only** under its
+[author terms](https://www.pgscatalog.org/rest/score/PGS000027/);
+commercial use requires contacting the Broad Institute for permission
 ([#1165](https://github.com/WGSExtract/wgsextract-cli/issues/1165) compares the
 candidates). Review the publication, development ancestry,
 licence and limitations before using a score. A height score in raw score

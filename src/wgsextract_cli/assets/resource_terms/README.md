@@ -1,5 +1,12 @@
 # Audited source-terms snapshots
 
+[`rights.json`](rights.json) is a separate, record-only inventory. Its
+`catalog` and `entries` identify the existing catalog keys, release tags or
+asset families. The original catalogs retain exact URLs, versions and hashes
+where known. For an unspecified grant or version, `license_url` identifies
+the source checked and `reason` explains what it does not establish. These
+records are not publishing inputs and do not authorize reuse.
+
 These are retained source bytes for the resource redistribution audit, not a
 new grant or a replacement for the source terms. `sources.json` records each
 source/fetch URL, UTC retrieval date, local file and SHA-256, including aliases

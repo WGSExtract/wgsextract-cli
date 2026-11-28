@@ -140,3 +140,27 @@ PR. See [CI routing](ci_routing.md).
 Changes to annotation resource code retain live SpliceAI format/score tests;
 changes to gene-list code or manifests retain live gene-list downloads and pin
 checks on PRs, even when their URLs did not change.
+
+## Resource rights outside the mirror catalog
+
+The [source-rights register](https://github.com/WGSExtract/wgsextract-cli/blob/main/src/wgsextract_cli/assets/resource_terms/rights.json)
+records attribution and use conditions for reference builds, tree and model
+checkpoints, templates and other resource families. “Unspecified” means the
+identified source does not establish a grant for the exact material. It does
+not mean unrestricted. The project's software licence does not clear
+third-party data. The register does not change current acquisition or
+distribution.
+
+The published `reference-bootstrap-v0.4.0` archive (SHA-256
+`32d7fc08ec4b727a27d2f4bf5f2129451873afeae44c116535c696639018130c`) contains
+UCSC's `hg38ToHg19.over.chain.gz` and does not contain UCSC's liftOver README.
+UCSC requires that README in the same archive or directory when redistributing
+the chain; its free-use terms apply only to independent researchers and
+nonprofits for noncommercial use. The T2T project chains have separate terms.
+This finding records the existing archive; it does not change the archive.
+
+Clair3's HKU checkpoint catalog and the native DeepVariant releases identify
+model versions and sources. The code licence alone does not establish a grant
+for an exact set of weights. The current Rerio Public License 2.0 limits
+covered contributions to research with Nanopore data; the historical terms
+for the exact HKU-converted files remain unspecified.

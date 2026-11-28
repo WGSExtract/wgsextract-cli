@@ -197,6 +197,11 @@ and notes were checked against the paper's
 [Table 1](https://pmc.ncbi.nlm.nih.gov/articles/PMC12318660/). v3.3 adds
 ABCD1, CYP27A1 and PLN to v3.2 and moves HFE to inborn errors of metabolism.
 
+The citations identify the source of the gene and reporting facts. The
+[Elsevier user licence](https://www.elsevier.com/open-access/userlicense/1.0/)
+is not blanket permission to redistribute or adapt the source table's prose.
+Rights in the exact report list notes remain unspecified.
+
 Pick another list with `--gene-list` or `report_gene_list` in config.toml:
 
 - **A built-in list**: `acmg-sf-3.3` (the default) or `acmg-sf-3.2`. Built-in

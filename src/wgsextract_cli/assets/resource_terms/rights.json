@@ -1,0 +1,543 @@
+{
+  "schema_version": 1,
+  "checked_on": "2026-11-28",
+  "records": [
+    {
+      "catalog": "clair3",
+      "entries": ["ont", "ont_guppy5", "r941_prom_hac_g360+g422", "r941_prom_sup_g5014"],
+      "source_url": "https://www.bio8.cs.hku.hk/clair3/clair3_models_pytorch/",
+      "license": "unspecified",
+      "license_url": "https://github.com/HKU-BAL/Clair3#pre-trained-models",
+      "attribution": "HKU-BAL Clair3 team; use the model ID and checkpoint hashes in assets/clair3/models.json.",
+      "restrictions": "Unspecified for the exact checkpoints.",
+      "reason": "HKU's download catalog and repository documentation identify the models; the repository's BSD-3-Clause notice does not expressly identify these separately downloaded files."
+    },
+    {
+      "catalog": "clair3",
+      "entries": [
+        "r1041_e82_260bps_fast_g632", "r1041_e82_260bps_hac_g632", "r1041_e82_260bps_hac_v400", "r1041_e82_260bps_hac_v410",
+        "r1041_e82_260bps_sup_g632", "r1041_e82_260bps_sup_v400", "r1041_e82_260bps_sup_v410",
+        "r1041_e82_400bps_fast_g615", "r1041_e82_400bps_fast_g632", "r1041_e82_400bps_hac_g615", "r1041_e82_400bps_hac_g632",
+        "r1041_e82_400bps_hac_v400", "r1041_e82_400bps_hac_v410", "r1041_e82_400bps_hac_v420", "r1041_e82_400bps_hac_v430",
+        "r1041_e82_400bps_hac_v500", "r1041_e82_400bps_hac_v520", "r1041_e82_400bps_hac_v600", "r1041_e82_400bps_sup_g615",
+        "r1041_e82_400bps_sup_v400", "r1041_e82_400bps_sup_v410", "r1041_e82_400bps_sup_v420", "r1041_e82_400bps_sup_v430",
+        "r1041_e82_400bps_sup_v500", "r1041_e82_400bps_sup_v520", "r104_e81_hac_g5015", "r104_e81_sup_g5015"
+      ],
+      "source_url": "https://www.bio8.cs.hku.hk/clair3/clair3_models_rerio_pytorch/",
+      "license": "unspecified",
+      "license_url": "https://github.com/nanoporetech/rerio/blob/master/LICENSE.txt",
+      "attribution": "Oxford Nanopore Technologies Rerio checkpoints; HKU-BAL converted TensorFlow to PyTorch. Exact model IDs, URLs and hashes are in assets/clair3/models.json.",
+      "restrictions": "Current ONT Public License 2.0 limits covered contributions to research with Nanopore data and is incompatible with GPL, LGPL and AGPL secondary licences. The exact conversion grant is unspecified.",
+      "reason": "HKU identifies the source and conversion, but does not state the historical source licence revision or separate grant for each hash-pinned conversion."
+    },
+    {
+      "catalog": "reference",
+      "entries": ["T2Tv09", "T2Tv10", "T2Tv11", "T2Tv20", "T2Tv20a"],
+      "source_url": "https://github.com/marbl/CHM13#data-reuse-and-license",
+      "license": "CC0-1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "attribution": "Telomere-to-Telomere Consortium; cite the CHM13 assembly release and its associated publications.",
+      "restrictions": "No use restriction under the assembly waiver; this record does not cover sequencing reads."
+    },
+    {
+      "catalog": "reference",
+      "entries": ["THGv20", "THGv27"],
+      "source_url": "https://github.com/marbl/HG002#data-reuse-and-license",
+      "license": "CC0-1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "attribution": "Telomere-to-Telomere Consortium; cite the HG002 assembly release and its associated publications.",
+      "restrictions": "No use restriction under the assembly waiver; this record does not cover sequencing reads."
+    },
+    {
+      "catalog": "reference",
+      "entries": ["HPPv1", "HPPv11"],
+      "source_url": "https://humanpangenome.org/data/",
+      "license": "HPRC public-domain data use protocol (unversioned)",
+      "license_url": "https://humanpangenome.org/data-use/",
+      "attribution": "Human Pangenome Reference Consortium; acknowledge and cite the reference source.",
+      "restrictions": "HPRC requests no sale of the reference itself and no restrictions on others' access."
+    },
+    {
+      "catalog": "reference",
+      "entries": ["hg19", "hg38"],
+      "source_url": "https://hgdownload.soe.ucsc.edu/goldenPath/",
+      "license": "UCSC Genome Browser Data terms (unversioned)",
+      "license_url": "https://genome.ucsc.edu/license/",
+      "attribution": "UCSC Genome Browser and Genome Reference Consortium; see the assembly-specific bigZips README and credit its listed contributors.",
+      "restrictions": "Public assembly data; preserve provider-specific conditions. This does not cover UCSC liftOver chains."
+    },
+    {
+      "catalog": "reference",
+      "entries": ["hs37", "hs37-", "hs37d5", "hs38", "hs38a", "hs38d1", "hs38d1a"],
+      "source_url": "https://www.internationalgenome.org/data/",
+      "license": "IGSR data-use and NCBI molecular-data policies (unversioned)",
+      "license_url": "https://www.ncbi.nlm.nih.gov/home/about/policies/",
+      "attribution": "Credit 1000 Genomes/IGSR or the original NCBI assembly submitter (as identified by the upstream seed row), including the assembly accession where available.",
+      "restrictions": "Public sequence data; NCBI does not transfer rights in third-party material. For companion data see https://www.internationalgenome.org/data-use-policy/."
+    },
+    {
+      "catalog": "reference",
+      "entries": ["Dog_UU_GSD", "Cat_Fca126"],
+      "source_url": "https://www.ncbi.nlm.nih.gov/datasets/genome/",
+      "license": "NCBI molecular data policy (unversioned)",
+      "license_url": "https://www.ncbi.nlm.nih.gov/home/about/policies/",
+      "attribution": "Credit the original NCBI assembly submitter and accession identified by the upstream seed row (GCF_011100685.1 or GCF_018350175.1).",
+      "restrictions": "Public sequence data; NCBI does not transfer rights in third-party material."
+    },
+    {
+      "catalog": "reference",
+      "entries": ["GRCh37", "GRCh38", "GRCh37-", "GRCh38-"],
+      "source_url": "https://www.ensembl.org/info/data/ftp/index.html",
+      "license": "Ensembl project data terms (unversioned)",
+      "license_url": "https://www.ensembl.org/info/about/legal/disclaimer.html",
+      "attribution": "Ensembl, GENCODE and the original Genome Reference Consortium assembly contributors.",
+      "restrictions": "No access/use restrictions on Ensembl-produced data; independently supplied material may have separate terms."
+    },
+    {
+      "catalog": "reference",
+      "entries": ["hs38DH"],
+      "source_url": "https://www.internationalgenome.org/category/reference/",
+      "license": "unspecified",
+      "license_url": "https://www.ebi.ac.uk/ipd/imgt/hla/licence/",
+      "attribution": "1000 Genomes, Genome Reference Consortium and the IPD-IMGT/HLA Database.",
+      "restrictions": "The current IPD-IMGT/HLA policy names CC Attribution-NoDerivs without a version, asks users not to mirror and requires permission for modification.",
+      "reason": "The historical grant for HLA sequences embedded in this legacy composite assembly was not established from the provider's current policy."
+    },
+    {
+      "catalog": "reference",
+      "entries": ["hs38d1s", "hs38d1t", "hs38d1c", "hs38d1v", "hg37w"],
+      "source_url": "https://github.com/WGSExtract/wgsextract-cli/releases/tag/v0.1.0",
+      "license": "unspecified",
+      "license_url": "https://www.ncbi.nlm.nih.gov/home/about/policies/",
+      "attribution": "Credit the original assembly and any added sequences; see the build descriptions and source links in the reference-genome catalog.",
+      "restrictions": "Unspecified for the exact composite files.",
+      "reason": "The NCBI policy and repository release do not establish origin and rights of every legacy decoy, viral or mitochondrial component."
+    },
+    {
+      "catalog": "reference",
+      "entries": ["hg37", "THGySeqp"],
+      "source_url": "https://genomes.yseq.net/WGS/ref/",
+      "license": "unspecified",
+      "license_url": "https://genomes.yseq.net/WGS/ref/",
+      "attribution": "YSEQ; credit the base assembly and YSEQ reference variant from the seed catalog.",
+      "restrictions": "Unspecified for the exact YSEQ builds.",
+      "reason": "YSEQ's download directory does not state dataset-specific reuse or redistribution terms."
+    },
+    {
+      "catalog": "reference",
+      "entries": ["THG1243v3"],
+      "source_url": "https://ccb.jhu.edu/research/PR1/",
+      "license": "unspecified",
+      "license_url": "https://ccb.jhu.edu/research/PR1/",
+      "attribution": "Johns Hopkins Center for Computational Biology, PR1/HG01243 project; cite the assembly publication.",
+      "restrictions": "Unspecified for this assembly.",
+      "reason": "The PR1 download and publication page identifies the assembly but does not state a data redistribution grant."
+    },
+    {
+      "catalog": "yleaf-archive",
+      "entries": ["hg19", "hg38", "hg_prediction_tables", "t2t"],
+      "source_url": "https://github.com/genid/Yleaf/tree/c167c4e8951623a53c370e7c300a0cfc7f411b62",
+      "license": "unspecified",
+      "license_url": "https://github.com/genid/Yleaf/blob/v4.1.6/LICENSE.txt",
+      "attribution": "Yleaf v4.1.6 and the original YFull, YBrowse/YSEQ, FamilyTreeDNA, ISOGG and UCSC contributors where their files occur.",
+      "restrictions": "Mixed rights; the Yleaf software licence is not a grant for the entire archive.",
+      "reason": "Legacy YFull, FamilyTreeDNA and ISOGG exact payload grants are not established. UCSC chains in the hg19/T2T archives have separate terms."
+    },
+    {
+      "catalog": "yleaf-tree",
+      "entries": ["yfull/tree"],
+      "source_url": "https://github.com/YFullTeam/YTree/blob/bdc9bb4d8db72abc7658362f258dbc2a63e34789/ytree/tree_14.06.0.zip",
+      "license": "CC-BY-4.0",
+      "license_url": "https://github.com/YFullTeam/YTree/blob/bdc9bb4d8db72abc7658362f258dbc2a63e34789/LICENSE.md",
+      "attribution": "YFull YTree 14.06.0; converted to WGSE's tree format. Retain the supplied LICENSE-YTree.md and identify changes.",
+      "restrictions": "Attribution and indication of changes; the YBrowse positions are not covered by this grant."
+    },
+    {
+      "catalog": "yleaf-tree",
+      "entries": ["yfull/positions", "ftdna/polarity", "isogg/polarity"],
+      "source_url": "https://ybrowse.org/gbrowse2/gff/snps_hg38.csv",
+      "license": "CC BY-SA (version unspecified)",
+      "license_url": "https://ybrowse.org/gbrowse2/gff/",
+      "attribution": "CC-BY-SA Thomas Krahn YSEQ (2022). WGSE adapted the 2026-11-05 snapshot into build-specific marker positions.",
+      "restrictions": "Attribution and share alike; exact licence version is unspecified.",
+      "reason": "The YBrowse source file's notice and release NOTICE-YBrowse.md do not name a version; the URL points to the source directory, not an assumed legalcode version."
+    },
+    {
+      "catalog": "yleaf-tree",
+      "entries": ["yfull_v10"],
+      "source_url": "https://github.com/genid/Yleaf/tree/c167c4e8951623a53c370e7c300a0cfc7f411b62",
+      "license": "unspecified",
+      "license_url": "https://github.com/YFullTeam/YTree",
+      "attribution": "YFull YTree 10.01.0 as packaged by Yleaf v4.1.6.",
+      "restrictions": "Unspecified for the legacy positions and exact imported tree snapshot.",
+      "reason": "The newer YFull YTree licence and the Yleaf code grant do not establish terms for every legacy table in the archive."
+    },
+    {
+      "catalog": "yleaf-tree",
+      "entries": ["ftdna"],
+      "source_url": "https://discover.familytreedna.com/y-dna",
+      "license": "unspecified",
+      "license_url": "https://www.familytreedna.com/legal/copyright-policy",
+      "attribution": "FamilyTreeDNA Y-DNA Haplotree, via Yleaf v4.1.6.",
+      "restrictions": "FamilyTreeDNA's published policy requires written permission to rehost, modify or redistribute its content.",
+      "reason": "No written grant for the exact imported tables and QC data was identified in the provider policy or Yleaf release."
+    },
+    {
+      "catalog": "yleaf-tree",
+      "entries": ["isogg"],
+      "source_url": "https://isogg.org/tree/",
+      "license": "unspecified",
+      "license_url": "https://isogg.org/tree/",
+      "attribution": "International Society of Genetic Genealogy, ISOGG Y-DNA Haplogroup Tree, via Yleaf v4.1.6.",
+      "restrictions": "The project website states all rights reserved; no redistribution permission was established.",
+      "reason": "The ISOGG tree page and Yleaf release do not show a reuse grant for the exact imported tables."
+    },
+    {
+      "catalog": "release",
+      "entries": ["hg38ToHg19.over.chain.gz", "hg38ToHs1.over.chain.gz"],
+      "source_url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/liftOver/",
+      "license": "UCSC Chain Files EULA (no version stated in README)",
+      "license_url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/liftOver/README.txt",
+      "attribution": "The Regents of the University of California, UCSC Genome Browser. Retain the source README.",
+      "restrictions": "Free for noncommercial independent researchers and nonprofits only; other use requires a commercial licence. Redistribution must include the README in the same archive or directory."
+    },
+    {
+      "catalog": "release",
+      "entries": ["hg18ToHg19.over.chain.gz"],
+      "source_url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg18/liftOver/hg18ToHg19.over.chain.gz",
+      "license": "UCSC Chain Files EULA (no version stated in README)",
+      "license_url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg18/liftOver/README.txt",
+      "attribution": "The Regents of the University of California, UCSC Genome Browser. Retain the hg18 liftOver README.",
+      "restrictions": "Free for noncommercial independent researchers and nonprofits only; other use requires a commercial licence. Redistribution must include the hg18 README in the same archive or directory."
+    },
+    {
+      "catalog": "release",
+      "entries": ["hg19ToHg38.over.chain.gz"],
+      "source_url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg19/liftOver/hg19ToHg38.over.chain.gz",
+      "license": "UCSC Chain Files EULA (no version stated in README)",
+      "license_url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg19/liftOver/README.txt",
+      "attribution": "The Regents of the University of California, UCSC Genome Browser. Retain the hg19 liftOver README.",
+      "restrictions": "Free for noncommercial independent researchers and nonprofits only; other use requires a commercial licence. Redistribution must include the hg19 README in the same archive or directory."
+    },
+    {
+      "catalog": "release",
+      "entries": ["reference-bootstrap/vendor-templates", "wheel/vendor-templates", "wheel/vendor-corrections", "wheel/chm13-v2-microarray-map"],
+      "source_url": "https://github.com/WGSExtract/wgsextract-cli/blob/main/src/wgsextract_cli/assets/microarray/raw_file_templates/README.md",
+      "license": "unspecified",
+      "license_url": "https://github.com/WGSExtract/wgsextract-cli/blob/main/src/wgsextract_cli/assets/microarray/raw_file_templates/README.md",
+      "attribution": "Original array vendors (identified by template name); H600 Project and private donors for source exports; WGSE for marker extraction, corrections and coordinate conversion.",
+      "restrictions": "Unspecified for vendor headers, marker compilations and their derivatives.",
+      "reason": "The template and CHM13 map documentation records donations, source tables and transformations, not a vendor redistribution grant. CC0 for a public input does not establish rights for the combined files."
+    },
+    {
+      "catalog": "release",
+      "entries": ["reference-bootstrap/BigY3"],
+      "source_url": "https://github.com/WGSExtract/WGSExtract-Dev/tree/108d1ad395e613552ad4dc01acfb1ff0de1ad08e/reference",
+      "license": "unspecified",
+      "license_url": "https://www.familytreedna.com/legal/copyright-policy",
+      "attribution": "FamilyTreeDNA Big Y capture design; WGSExtract-Dev intermediate BigY3 BEDs.",
+      "restrictions": "Unspecified for the capture design; this is not a Poz/CombBED preset.",
+      "reason": "The intermediate repository and FamilyTreeDNA's published policy do not establish a grant for these particular capture BEDs."
+    },
+    {
+      "catalog": "release",
+      "entries": ["reference-bootstrap/CombBED", "wheel/poz"],
+      "source_url": "https://github.com/WGSExtract/WGSExtract-Dev/tree/108d1ad395e613552ad4dc01acfb1ff0de1ad08e/reference",
+      "license": "unspecified",
+      "license_url": "https://github.com/WGSExtract/WGSExtract-Dev/blob/108d1ad395e613552ad4dc01acfb1ff0de1ad08e/LICENSE",
+      "attribution": "WGSExtract-Dev, CombBED / McDonald / Poznik and David Vance's HG38 spreadsheet. See wheel's poz/NOTICE.txt for transformations.",
+      "restrictions": "Unspecified for the underlying spreadsheet and contributed designs.",
+      "reason": "The intermediate repository's GNU GPL v3 notice is not evidence that the underlying authors granted rights in their designs or spreadsheet."
+    },
+    {
+      "catalog": "release",
+      "entries": ["reference-bootstrap/TruSeq-Exome-v1.2"],
+      "source_url": "https://support.illumina.com/downloads/truseq-exome-product-files.html",
+      "license": "unspecified",
+      "license_url": "https://support.illumina.com/downloads/truseq-exome-product-files.html",
+      "attribution": "Illumina TruSeq Exome product design; WGSE bootstrap coordinate and contig-name variants.",
+      "restrictions": "Unspecified for reuse and redistribution of the design.",
+      "reason": "Illumina's source download page does not identify a grant for these BED files."
+    },
+    {
+      "catalog": "release",
+      "entries": ["reference-bootstrap/IDT-xgen-plus-spikein"],
+      "source_url": "https://biobank.ndph.ox.ac.uk/ukb/refer.cgi?id=3803",
+      "license": "unspecified",
+      "license_url": "https://biobank.ndph.ox.ac.uk/ukb/refer.cgi?id=3803",
+      "attribution": "Integrated DNA Technologies xGen Exome plus spike-in capture; UK Biobank resource 3803; WGSE bootstrap contig-name variants.",
+      "restrictions": "Unspecified for reuse and redistribution of the design.",
+      "reason": "The UK Biobank design record documents provenance but does not state an onward grant for these BEDs."
+    },
+    {
+      "catalog": "report-gene-list",
+      "entries": ["acmg-sf-3.3"],
+      "source_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC12318660/",
+      "license": "unspecified",
+      "license_url": "https://www.elsevier.com/open-access/userlicense/1.0/",
+      "attribution": "Lee et al., ACMG SF v3.3, Genetics in Medicine (2025), doi:10.1016/j.gim.2025.101454.",
+      "restrictions": "The article's Elsevier user licence is not blanket permission to redistribute or adapt table prose.",
+      "reason": "The primary article's terms do not establish a grant for WGSE's exact release TSVs or reporting notes; independent factual expression is a separate question."
+    },
+    {
+      "catalog": "report-gene-list",
+      "entries": ["acmg-sf-3.2"],
+      "source_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10524344/",
+      "license": "unspecified",
+      "license_url": "https://www.elsevier.com/open-access/userlicense/1.0/",
+      "attribution": "Miller et al., ACMG SF v3.2, Genetics in Medicine (2023), doi:10.1016/j.gim.2023.100866.",
+      "restrictions": "Do not infer redistribution or adaptation permission for table prose from public access.",
+      "reason": "The primary article and publisher terms do not establish the terms of independent redistribution of WGSE's exact release TSVs or reporting notes."
+    },
+    {
+      "catalog": "runtime",
+      "entries": ["clinpgx-clinicalAnnotations", "clinpgx-variants", "clinpgx-derived-clinical-table"],
+      "source_url": "https://www.clinpgx.org/downloads",
+      "license": "CC-BY-SA-4.0 plus ClinPGx Data Usage Policy",
+      "license_url": "https://api.clinpgx.org/v1/data/page/dataUsagePolicy?view=min",
+      "attribution": "ClinPGx (PharmGKB); retain archive creation and retrieval dates, changes and ClinPGx's licence. See derived table header.",
+      "restrictions": "Research use, no sale of the data, attribution and share alike. CPIC's CC0 is separate."
+    },
+    {
+      "catalog": "runtime",
+      "entries": ["cpic"],
+      "source_url": "https://api.clinpgx.org/v1/data/page/cpicLicensing?view=min",
+      "license": "CC0-1.0",
+      "license_url": "https://api.clinpgx.org/v1/data/page/cpicLicensing?view=min",
+      "attribution": "Clinical Pharmacogenetics Implementation Consortium (CPIC).",
+      "restrictions": "No restriction under the waiver for CPIC data; the waiver does not cover the separate ClinPGx clinical table."
+    },
+    {
+      "catalog": "runtime",
+      "entries": ["cyrius-pypi-1.1.1"],
+      "source_url": "https://pypi.org/pypi/cyrius/1.1.1/json",
+      "license": "PolyForm Strict 1.0.0 (PyPI declares PolyFormStrict; consult the package publisher about the conflicting Git tag)",
+      "license_url": "https://github.com/Illumina/Cyrius/blob/master/LICENSE.txt",
+      "attribution": "Illumina, Cyrius 1.1.1. The PyPI sdist and Git v1.1.1 source-tag notices differ.",
+      "restrictions": "Strict permits use for specified noncommercial purposes and does not grant distribution or modification. Do not bundle, mirror or modify under that licence; this record does not say WGSE ships Cyrius."
+    },
+    {
+      "catalog": "runtime",
+      "entries": ["PGS000027"],
+      "source_url": "https://www.pgscatalog.org/score/PGS000027/",
+      "license": "PGS000027 author terms (unversioned)",
+      "license_url": "https://www.pgscatalog.org/rest/score/PGS000027/",
+      "attribution": "Khera et al. (2019), PGS Catalog PGS000027; legacy BMI score.",
+      "restrictions": "Academic-research-only under the public grant; commercial users must contact the Broad Office of Strategic Alliances and Partnering."
+    },
+    {
+      "catalog": "runtime",
+      "entries": ["PGS005198"],
+      "source_url": "https://www.pgscatalog.org/score/PGS005198/",
+      "license": "CC-BY-4.0",
+      "license_url": "https://www.pgscatalog.org/rest/score/PGS005198/",
+      "attribution": "Smit et al. (2025), GIANT Consortium, PGS Catalog PGS005198; current BMI alias.",
+      "restrictions": "Attribution and indication of changes. This is not the restricted legacy PGS000027 score."
+    },
+    {
+      "catalog": "ont-hg002",
+      "entries": [
+        "PAO83395.pass.cram", "PAO83395.pass.cram.crai", "hg002_ont_r1041_chr20_10-15Mb.cram", "hg002_ont_r1041_chr20_10-15Mb.cram.crai",
+        "hg002_ont_r1041_chr20_part1.cram", "hg002_ont_r1041_chr20_part1.cram.crai",
+        "hg002_ont_r1041_chr20_part2.cram", "hg002_ont_r1041_chr20_part2.cram.crai"
+      ],
+      "source_url": "https://ont-open-data.s3.amazonaws.com/giab_2023.05/analysis/hg002/sup/PAO83395.pass.cram",
+      "license": "CC-BY-NC-4.0 (current source registry; historical grant for giab_2023.05 unspecified)",
+      "license_url": "https://registry.opendata.aws/ont-open-data/",
+      "attribution": "Oxford Nanopore Technologies Open Data, GIAB HG002 May 2023; WGSE extracted chromosome 20 slices and their indexes.",
+      "restrictions": "The current registry specifies noncommercial use and attribution. Do not rely on the older CC BY-only manifest statement as commercial clearance.",
+      "reason": "The registry and project manifest disagree. No date-specific May 2023 grant establishing broader permission was found."
+    },
+    {
+      "catalog": "ont-hg002",
+      "entries": [
+        "HG002_GRCh38_1_22_v4.2.1_benchmark.vcf.gz", "HG002_GRCh38_1_22_v4.2.1_benchmark.vcf.gz.tbi",
+        "HG002_GRCh38_1_22_v4.2.1_benchmark_noinconsistent.bed",
+        "HG002_GRCh38_v5.0q_stvar.vcf.gz", "HG002_GRCh38_v5.0q_stvar.vcf.gz.tbi", "HG002_GRCh38_v5.0q_stvar.benchmark.bed",
+        "HG002_GRCh38_v5.0q_smvar.vcf.gz", "HG002_GRCh38_v5.0q_smvar.vcf.gz.tbi", "HG002_GRCh38_v5.0q_smvar.benchmark.bed"
+      ],
+      "source_url": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/AshkenazimTrio/HG002_NA24385_son/",
+      "license": "NCBI molecular data policy (unversioned)",
+      "license_url": "https://www.ncbi.nlm.nih.gov/home/about/policies/",
+      "attribution": "NIST Genome in a Bottle Consortium, HG002 GRCh38 v4.2.1 and v5.0q benchmark truth sets.",
+      "restrictions": "Public molecular data; NCBI does not grant rights in third-party material. These are not ONT reads."
+    },
+    {
+      "catalog": "release",
+      "entries": [
+        "linux-deepvariant-1/weights", "linux-deepvariant-2/weights", "linux-deepvariant-3/weights", "linux-deepvariant-4/weights",
+        "macos-deepvariant-1/weights", "macos-deepvariant-2/weights", "macos-deepvariant-3/weights", "macos-deepvariant-4/weights", "macos-deepvariant-5/weights"
+      ],
+      "source_url": "https://hub.docker.com/r/google/deepvariant",
+      "license": "unspecified",
+      "license_url": "https://github.com/google/deepvariant/blob/v1.10.0/LICENSE",
+      "attribution": "Google LLC, DeepVariant 1.10.0 official image WGS and ONT_R104 large and small models; WGSE converts selected tensors to DVW and serializes the small models with native/deepvariant/convert_weights.py.",
+      "restrictions": "Unspecified for exact converted weight archives pending archive and original model-specific grant verification.",
+      "reason": "WGSE's release recipe includes Google's BSD-3-Clause notice, but the upstream repository code notice alone does not establish the terms carried by the exact original image checkpoints. These large release archives were not opened in this audit."
+    },
+    {
+      "catalog": "release",
+      "entries": ["macos-clair3-1", "macos-clair3-2"],
+      "source_url": "https://github.com/HKU-BAL/Clair3",
+      "license": "unspecified",
+      "license_url": "https://github.com/HKU-BAL/Clair3/blob/main/LICENSE.md",
+      "attribution": "HKU-BAL Clair3; where present, identify and credit separately distributed model inputs and packaged dependencies.",
+      "restrictions": "BSD-3-Clause for HKU code; separate licences may apply to weights and other components.",
+      "reason": "The code notice does not establish a model grant; these complete native archives were not opened in this audit."
+    },
+    {
+      "catalog": "release",
+      "entries": ["wheel/aadr-1240K", "wheel/aadr-HO", "aadr-2M"],
+      "source_url": "https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/FFIDCW",
+      "license": "CC0-1.0",
+      "license_url": "https://dataverse.harvard.edu/api/datasets/:persistentId/versions/14.0?persistentId=doi:10.7910/DVN/FFIDCW",
+      "attribution": "Allen Ancient DNA Resource, v66.p1 (Dataverse version 14.0); cite the resource and contributors. WGSE extracts marker IDs/coordinates only.",
+      "restrictions": "No use restriction under the waiver; separate terms may govern other inputs used to lift coordinates."
+    },
+    {
+      "catalog": "release",
+      "entries": ["wheel/23andMe_V2", "wheel/microarray-revision-fingerprints", "wheel/microarray-strand"],
+      "source_url": "https://archive.org/details/opensnp_data_dumps",
+      "license": "CC0-1.0 (openSNP dump); underlying vendor terms unspecified",
+      "license_url": "https://archive.org/metadata/opensnp_data_dumps",
+      "attribution": "openSNP data dump contributors; original vendors by template name. WGSE derives marker profiles, fingerprints and orientation metadata.",
+      "restrictions": "The archive waiver does not establish a grant for vendor headers or compilations.",
+      "reason": "The openSNP archive metadata declares CC0; it does not identify a grant from the original marker list vendors."
+    },
+    {
+      "catalog": "release",
+      "entries": ["wheel/dbsnp157", "refseq-gene-tables", "rCRS"],
+      "source_url": "https://www.ncbi.nlm.nih.gov/",
+      "license": "NCBI molecular data policy (unversioned)",
+      "license_url": "https://www.ncbi.nlm.nih.gov/home/about/policies/",
+      "attribution": "NCBI dbSNP build 157 and RefSeq; identify the accession or build and cite the source project.",
+      "restrictions": "Public molecular data; no claim to independent third-party material."
+    },
+    {
+      "catalog": "release",
+      "entries": ["T2T-CHM13-v2-assembly-chains"],
+      "source_url": "https://github.com/marbl/CHM13#liftover",
+      "license": "CC0-1.0",
+      "license_url": "https://github.com/marbl/CHM13#data-reuse-and-license",
+      "attribution": "Telomere-to-Telomere Consortium, CHM13 v2.0 project chain files.",
+      "restrictions": "This waiver applies to project-produced files, not UCSC Chain Files."
+    },
+    {
+      "catalog": "release",
+      "entries": ["wheel/expansionhunter-disease-str"],
+      "source_url": "https://github.com/Illumina/ExpansionHunter/tree/v5.0.0/variant_catalog",
+      "license": "Apache-2.0",
+      "license_url": "https://github.com/Illumina/ExpansionHunter/blob/v5.0.0/LICENSE.txt",
+      "attribution": "Illumina ExpansionHunter v5.0.0; WGSE adapts upstream disease loci to caller-specific BEDs.",
+      "restrictions": "Retain the licence and attribution notices and identify modified files."
+    },
+    {
+      "catalog": "release",
+      "entries": ["wheel/strchive-disease-str"],
+      "source_url": "https://github.com/dashnowlab/STRchive/tree/v2.28.0/data/catalogs",
+      "license": "MIT (unversioned)",
+      "license_url": "https://github.com/dashnowlab/STRchive/blob/v2.28.0/LICENSE",
+      "attribution": "STRchive contributors; Hiatt et al. (2025), Genome Medicine 17:29. WGSE adapts the disease catalog.",
+      "restrictions": "Retain MIT copyright and permission notice."
+    },
+    {
+      "catalog": "release",
+      "entries": ["wheel/y-str-panel"],
+      "source_url": "https://github.com/WGSExtract/wgsextract-cli/blob/main/scripts/build_ystr_panel.py",
+      "license": "unspecified",
+      "license_url": "https://github.com/HipSTR-Tool/HipSTR-references/blob/master/LICENSE",
+      "attribution": "HipSTR-references, Y-LineageTracker, NIST and Y-STR_Kit as identified in the panel builder.",
+      "restrictions": "Preserve the MIT notices of HipSTR-references and Y-LineageTracker; exact Y-STR_Kit terms unspecified.",
+      "reason": "The source licence for constructively merged windows and patterns derived from Y-STR_Kit was not established by the builder or the other input licences."
+    },
+    {
+      "catalog": "release",
+      "entries": ["ancestry-ref-1"],
+      "source_url": "https://storage.googleapis.com/gcp-public-data--gnomad/release/3.1/secondary_analyses/hgdp_1kg/",
+      "license": "CC0-1.0 (gnomAD primary data); terms for all derived components unspecified",
+      "license_url": "https://gnomad.broadinstitute.org/terms",
+      "attribution": "gnomAD v3.1 HGDP+1KG, Human Genome Diversity Project and 1000 Genomes/IGSR; WGSE derives reference statistics and model inputs.",
+      "restrictions": "Observe cohort-specific use policies; see the HGDP Fort Lauderdale data reuse statement. UCSC chains used in coordinate conversion carry separate terms.",
+      "reason": "The gnomAD policy covers primary data, not third-party inputs; no single grant was identified for all derived components."
+    },
+    {
+      "catalog": "release",
+      "entries": ["pgs-ref-1", "pgs-ref-2"],
+      "source_url": "https://ftp.ebi.ac.uk/pub/databases/spot/pgs/resources/pgsc_HGDP+1kGP_v1.tar.zst",
+      "license": "CC0-1.0 (gnomAD primary data ancestry input); terms for all derived components unspecified",
+      "license_url": "https://gnomad.broadinstitute.org/terms",
+      "attribution": "PGS Catalog/pgsc_calc pgsc_HGDP+1kGP_v1, derived from gnomAD v3.1 HGDP+1KG; credit HGDP, 1000 Genomes/IGSR, and the original author of each PGS.",
+      "restrictions": "Apply the original score-specific author terms separately. Release reference statistics and row masks are not the original scoring files.",
+      "reason": "The gnomAD primary-data policy and pgsc_calc reference documentation do not establish a standalone grant across every PGS-derived component."
+    },
+    {
+      "catalog": "release",
+      "entries": ["panel-reference-1"],
+      "source_url": "https://github.com/WGSExtract/wgsextract-cli/blob/main/src/wgsextract_cli/core/panel_reference.py",
+      "license": "unspecified",
+      "license_url": "https://gnomad.broadinstitute.org/terms",
+      "attribution": "WGSE panel reference builders and the underlying gnomAD, Ensembl and gene reference sources.",
+      "restrictions": "gnomAD primary data are CC0; annotations from third parties may be subject to other terms.",
+      "reason": "The gnomAD source policy and project catalog do not establish terms across every derived panel component."
+    },
+    {
+      "catalog": "runtime",
+      "entries": ["glimpse-genetic-maps", "verifybamid2-reference-panels"],
+      "source_url": "https://www.internationalgenome.org/data/",
+      "license": "unspecified",
+      "license_url": "https://www.internationalgenome.org/data-use-policy/",
+      "attribution": "1000 Genomes/IGSR and the GLIMPSE or VerifyBamID2 authors; identify the exact upstream map or panel revision.",
+      "restrictions": "Cohort terms may apply; no grant inferred from tool code.",
+      "reason": "Public sequence data policy does not settle terms for every genetic map or panel derived from additional sources."
+    },
+    {
+      "catalog": "runtime",
+      "entries": ["somalier-sites-and-labels"],
+      "source_url": "https://github.com/brentp/somalier",
+      "license": "unspecified",
+      "license_url": "https://zenodo.org/records/3479773",
+      "attribution": "Brent Pedersen and contributors, Somalier; distinguish sites/labels from the Zenodo sketches.",
+      "restrictions": "Zenodo sketches are CC BY 4.0; do not assume that applies to separately distributed sites and labels.",
+      "reason": "The Zenodo record establishes terms for the sketches, not the exact runtime site and label files."
+    },
+    {
+      "catalog": "runtime",
+      "entries": ["haplogrep-phylotree"],
+      "source_url": "https://github.com/genepi/phylotree-fu-rcrs",
+      "license": "unspecified",
+      "license_url": "https://github.com/genepi/phylotree-fu-rcrs/blob/master/LICENSE",
+      "attribution": "HaploGrep/PhyloTree maintainers, and authors of separately sourced MitImpact, rCRS and gnomAD annotations.",
+      "restrictions": "The forensic PhyloTree module's MIT notice does not clear all of its annotation inputs.",
+      "reason": "The external annotation sources do not share the module's code/data grant; not all track-level grants were established."
+    },
+    {
+      "catalog": "runtime",
+      "entries": ["mitotree"],
+      "source_url": "https://github.com/genebygene/mitotree",
+      "license": "CC-BY-NC-ND-4.0",
+      "license_url": "https://github.com/genebygene/mitotree/blob/main/LICENSE",
+      "attribution": "Gene by Gene, MitoTree; credit the exact tree release.",
+      "restrictions": "Noncommercial; attribution required; no sharing of adapted material."
+    },
+    {
+      "catalog": "release",
+      "entries": ["aligner-bench-data-1", "remote-test-data-1", "ci-hs38-1", "v0.1.0/benchmark-hg19-mini"],
+      "source_url": "https://www.internationalgenome.org/",
+      "license": "unspecified",
+      "license_url": "https://www.ncbi.nlm.nih.gov/home/about/policies/",
+      "attribution": "Genome in a Bottle, 1000 Genomes and the original reference contributors as applicable; WGSE makes reference slices, read slices and indexes.",
+      "restrictions": "Apply the original read, truth and reference source policies separately.",
+      "reason": "NCBI/IGSR public-data policies and the release metadata are not a blanket grant across these mixed archives or all exact study inputs."
+    },
+    {
+      "catalog": "release",
+      "entries": ["v0.1.0/delly-mappability-maps"],
+      "source_url": "https://github.com/dellytools/delly",
+      "license": "unspecified",
+      "license_url": "https://github.com/dellytools/delly/blob/main/LICENSE",
+      "attribution": "DELLY authors and original genome/map providers; identify the reference build when citing a map.",
+      "restrictions": "No grant inferred from DELLY's code licence.",
+      "reason": "The upstream software notice and legacy release description do not state reuse terms for each map."
+    }
+  ]
+}

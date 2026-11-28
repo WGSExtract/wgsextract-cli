@@ -1024,7 +1024,11 @@ the scope so they do not overwrite whole-header reports.
 ## Validation on GIAB HG002
 
 ONT's public HG002 R10.4.1 run (`PAO83395`, giab_2023.05, sup v4.0.0 with
-5mCG/5hmCG, about 51x by `samtools coverage`, CC BY 4.0) was put through the CLI. The steps were:
+5mCG/5hmCG, about 51x by `samtools coverage`) was put through the CLI. The
+[ONT registry](https://registry.opendata.aws/ont-open-data/) currently states
+CC BY-NC 4.0. The historical terms for this May 2023 dataset are unspecified;
+older WGSE provenance's CC BY-only wording does not establish commercial
+permission. The steps were:
 
 - `extract` a region from ONT's alignment;
 - `realign` it to hs38 with the ONT preset;

@@ -118,8 +118,9 @@
       "name": "YFull YTree",
       "version": "10.01.0",
       "date": "2022-02-25",
-      "license": "CC-BY-4.0",
+      "license": "unspecified for the exact legacy snapshot",
       "source": "Yleaf v4.1.6 data (yfull_v10_tree.json, yfull_v10_positions_<build>.txt)",
+      "terms": "No grant for this exact legacy snapshot and positions was established from https://github.com/YFullTeam/YTree or the Yleaf v4.1.6 release. The grant for the newer YFull YTree does not establish terms for these files.",
       "builds": [
         "hg19",
         "hg38",

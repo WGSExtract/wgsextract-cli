@@ -514,9 +514,11 @@ recipe remain unchanged.
 
 ## Licences
 
-DeepVariant and the port are BSD-3-Clause (Google LLC); Google distributes the
-1.10.0 models under the same licence, which the weights archive includes. The
-binary's archive has the licences of everything built into it in
+The weights archive includes Google's BSD-3-Clause DeepVariant source notice.
+The exact grant for the original 1.10.0 image checkpoints and redistributed
+conversions is unspecified: the source notice is not a checkpoint-specific
+grant. See [the resource rights inventory](../../docs/resource-mirrors.md#resource-rights-outside-the-mirror-catalog).
+The binary's archive has the licences of everything built into it in
 `share/licenses/wgse-deepvariant`: abseil (Apache-2.0), protobuf, re2 (BSD-3),
 htslib and htscodecs (MIT/BSD), libdeflate (MIT), liblzma (0BSD), Boost (BSL-1.0),
 libssw and sse2neon (MIT). The Linux packages link their dependencies from
