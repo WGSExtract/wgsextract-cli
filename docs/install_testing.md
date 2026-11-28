@@ -147,7 +147,10 @@ be what passes. In the VM:
    `--cli-from-tree`.
 3. The real actions run on the HG00096 mini genome through the same
    GUIForCLICore runner the app uses (`gui-for-cli bundle test`) with the
-   installed app's bundle and workspace. Clicking isn't simulated; everything
+   installed app's bundle and workspace. On macOS, Linux, and Windows, the
+   packaged Node runner uses the same app-data identity as setup so it finds
+   the installed CLI runtime, rather than looking in a development directory.
+   Clicking isn't simulated; everything
    the click would start is. The reference-genome dropdowns' data sources are
    loaded the same way (`dataSource` steps): each script must resolve for the
    platform, run on the app's own runtime and print its list (gui-for-cli#140
