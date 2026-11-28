@@ -28,12 +28,12 @@ export function isBootstrapLibrary(executable: string, args: string[]) {
     return isWrappedCommand(executable, args, bootstrapName);
 }
 
-export function isLegacyBundledCli(executable: string, args: string[], env: NodeJS.ProcessEnv) {
+export function isLegacyBundledCli(executable: string, args: string[], env: NodeJS.ProcessEnv, cwd = process.cwd()) {
     if (!isWrappedCommand(executable, args, cliWrapperName) && !isBootstrapLibrary(executable, args)) return false;
     const appData = env.WGSEXTRACT_GUI_APP_DATA;
     const appDir = env.WGSEXTRACT_APP_DIR || (appData && path.join(appData, "runtime", "wgsextract-cli", "app"));
     if (!appDir) return false;
-    const source = path.join(appDir, "src", "wgsextract_cli");
+    const source = path.resolve(cwd, appDir, "src", "wgsextract_cli");
     // The pinned v0.8.10 and the development tree report the same version.
     // Check the installed source for the module that introduced network modes.
     return existsSync(path.join(source, "__init__.py")) && !existsSync(path.join(source, "core", "network_policy.py"));
@@ -52,7 +52,7 @@ export function withCliNetworkPolicy(runProcess: RunProcess): RunProcess {
         const bootstrap = isBootstrapLibrary(executable, args);
         if (!bootstrap && !isWgsExtractCli(executable, args)) return runProcess(executable, args, options);
         const mode = await readEffectiveNetworkMode();
-        if (!isLegacyBundledCli(executable, args, options.env ?? process.env)) {
+        if (!isLegacyBundledCli(executable, args, options.env ?? process.env, options.cwd)) {
             return runProcess(executable, cliNetworkArguments(args, mode), options);
         }
         // Setup already enforces consent and supplies this flag only after confirmation.

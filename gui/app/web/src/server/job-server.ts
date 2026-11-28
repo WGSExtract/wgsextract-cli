@@ -109,7 +109,7 @@ export function createJobServer(spec: JobServerSpec, bundleRoot: string, runProc
         ...(networkMode ? { networkMode } : {}),
         address: () => {
             // This CLI cannot apply per-job network modes. Use the guarded command fallback.
-            if (networkMode && isLegacyBundledCli(spec.command.executable, spec.command.arguments ?? [], { ...process.env, ...bundleEnvironment(bundleRoot) })) {
+            if (networkMode && isLegacyBundledCli(spec.command.executable, spec.command.arguments ?? [], { ...process.env, ...bundleEnvironment(bundleRoot) }, bundleRoot)) {
                 return Promise.resolve(undefined);
             }
             starting ??= start();

@@ -148,7 +148,8 @@ const browserTestOptions = { skip: !existsSync(executablePath) && "Requires inst
 test("#1674 bootstrap accepts both the pinned CLI and the network-aware tree", async (t) => {
     const root = await isolatedRoot(t);
     const appData = path.join(root, "App Data");
-    const source = path.join(appData, "runtime", "wgsextract-cli", "app", "src", "wgsextract_cli");
+    const appDir = path.relative(root, path.join(appData, "runtime", "wgsextract-cli", "app"));
+    const source = path.join(root, appDir, "src", "wgsextract_cli");
     await mkdir(path.join(source, "core"), { recursive: true });
     await writeFile(path.join(source, "__init__.py"), '__version__ = "0.8.10"\n');
     const windows = process.platform === "win32";
@@ -164,8 +165,9 @@ test("#1674 bootstrap accepts both the pinned CLI and the network-aware tree", a
     const manager = createProcessManager({ maxOutputBytes: 1024, maxErrorBytes: 1024 });
     t.after(() => manager.terminateAllProcesses());
     const run = withCliNetworkPolicy(manager.runProcess);
-    const launch = (...flags) => run(executable, [...args, ...flags], { cwd: root, env: { ...process.env, WGSEXTRACT_GUI_APP_DATA: appData } });
-    await saveNetworkSettings({ consent: "accepted", mode: "full" });
+    const launch = (...flags) => run(executable, [...args, ...flags], { cwd: root, env: { ...process.env, WGSEXTRACT_APP_DIR: appDir } });
+    await saveNetworkSettings({ consent: "accepted" });
+    await saveNetworkSettings({ mode: "full" });
     assert.match((await launch()).stdout, /BOOTSTRAPPED/);
 
     await saveNetworkSettings({ mode: "low" });
