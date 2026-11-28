@@ -9,7 +9,7 @@ from typing import Any
 
 from ._params import Params, param, with_config_defaults
 from ._ref_library import _InLibrary
-from ._shared import ref_param, threads_param
+from ._shared import gtex_pairs_param, ref_param, threads_param
 
 BUILDS = ("hg38", "hg19")
 GNOMAD_RELEASES = ("2.1.1", "4.1")
@@ -37,17 +37,25 @@ class _Resource(_InLibrary, Params):
 
 @dataclass(frozen=True, kw_only=True)
 class RefGtexParams(_InLibrary, Params):
-    """Verify or explicitly download the GRCh38 GTEx v10 SuSiE eQTL archive."""
+    """Verify or explicitly download a GRCh38 GTEx v10 eQTL track."""
 
     COMMAND = "ref gtex"
 
     download: bool = param(
         False,
-        help="Fetch the pinned public archive (174 MB) from storage.googleapis.com.",
+        help="Fetch the pinned archive from storage.googleapis.com "
+        "(SuSiE: 174 MB; --pairs: 2.56 GB to install one tissue).",
         action="store_true",
         writes=True,
     )
+    pairs: str | None = gtex_pairs_param()
     ref: Path | None = ref_param()
+
+    def __post_init__(self) -> None:
+        from wgsextract_cli.core.gtex_pairs import validate_tissue
+
+        super().__post_init__()
+        validate_tissue(self.pairs)
 
     def library(self) -> Path:
         from wgsextract_cli.core.ref_library.assets import resolve_reference_library
@@ -59,7 +67,7 @@ class RefGtexParams(_InLibrary, Params):
         from wgsextract_cli.core import gtex_data
 
         filled = with_config_defaults(self, only={"ref"})
-        yield from gtex_data.guarded_paths(filled.ref)
+        yield from gtex_data.guarded_paths(filled.ref, filled.pairs)
 
 
 @dataclass(frozen=True, kw_only=True)

@@ -50,6 +50,7 @@ from .chain_scope import ChainScope, resolve_scope, select_records, vcf_indexes
 from .clinvar_revel import CLINVAR_ANNOTATED, REVEL_ANNOTATED
 from .deleteriousness import CADD_ANNOTATED, GERP_ANNOTATED
 from .gtex import (
+    GTEX_PAIRS_TSV,
     GTEX_TSV,
     input_generations,
     protect_output,
@@ -62,7 +63,7 @@ from .splicing import ALPHAMISSENSE_ANNOTATED, PHARMGKB_ANNOTATED, SPLICEAI_ANNO
 from .table import run_table
 
 _JOURNAL = "chain_annotate.steps.json"
-_GTEX_SIDECAR = "chain_" + GTEX_TSV
+_GTEX_SIDECARS = ("chain_" + GTEX_TSV, "chain_" + GTEX_PAIRS_TSV)
 
 # annotation -> (ReferenceLibrary attribute holding its data, step output name)
 _VCF_STEPS = {
@@ -419,7 +420,7 @@ def _chain_inputs(
     lib: ReferenceLibrary,
     annotations: list[str],
 ) -> list[str | Path | None]:
-    tracks = [dataset(ann, lib) for ann in annotations]
+    tracks = [dataset(ann, lib) for ann in annotations if ann != "gtex"]
     if "cadd" in annotations:
         tracks.append(lib.cadd_indel_file)
     paths: list[str | Path | None] = [
@@ -431,7 +432,8 @@ def _chain_inputs(
             paths.extend(vcf_indexes(str(path)))
             paths.append(f"{path}.gzi")
     if "gtex" in annotations:
-        paths.append(gtex_data.receipt_path(gtex_data.path(lib.root)))
+        table = gtex_data.path(lib.root, params.pairs)
+        paths.extend((table, gtex_data.receipt_path(table)))
     if "regulatory" in annotations:
         track = regulatory_data.path(lib.root)
         paths.extend((regulatory_data.index(track), regulatory_data.marker(track)))
@@ -540,6 +542,7 @@ def _publish_chain(
     table: Path | None,
     sidecar: Path,
     *,
+    pairs: str | None = None,
     checkpoint: Callable[[], None] | None = None,
 ) -> dict[str, int]:
     with (
@@ -559,7 +562,7 @@ def _publish_chain(
         metrics = {}
         if table is not None:
             tsv = outputs.enter_context(atomic_output(sidecar, retire_indexes=False))
-            metrics = write_sidecar(str(vcf), table, Path(tsv), sidecar)
+            metrics = write_sidecar(str(vcf), table, Path(tsv), sidecar, pairs)
         indexes = {
             Path(str(vcf) + ext): Path(str(final) + ext) for ext in (".tbi", ".csi")
         }
@@ -582,6 +585,7 @@ def _publish_gtex(
     table: Path,
     sidecar: Path,
     protect_sidecar: Callable[[], None],
+    pairs: str | None,
 ) -> None:
     source_indexes = vcf_indexes(source) if source != input_file else ()
     inputs: dict[str, str | Path] = {
@@ -616,13 +620,21 @@ def _publish_gtex(
         with journal.running(decision, keep_partial=True) as handle:
             handle.metrics.update(
                 _publish_chain(
-                    source, input_file, final, table, sidecar, checkpoint=unchanged
+                    source,
+                    input_file,
+                    final,
+                    table,
+                    sidecar,
+                    pairs=pairs,
+                    checkpoint=unchanged,
                 )
             )
             for path in vcf_indexes(str(final)):
                 handle.add_output(path)
     else:
-        with gtex_data.open_track(table, verify=True, cancel=cancel_event()) as (
+        with gtex_data.open_track(
+            table, pairs=pairs, verify=True, cancel=cancel_event()
+        ) as (
             _,
             provenance,
         ):
@@ -635,6 +647,7 @@ def _publish_gtex(
                     for key, value in decision.metrics.items()
                     if key.startswith("gtex_") and isinstance(value, int)
                 },
+                pairs,
             )
     current_result().add_output(sidecar, "gtex_eqtl_associations")
 
@@ -660,15 +673,20 @@ def run_chain_annotate(
         else None
     )
     lib = ReferenceLibrary(params.ref, md5_sig, input_path=input_file)
-    sidecar = outdir / _GTEX_SIDECAR
+    sidecar = outdir / _GTEX_SIDECARS[params.pairs is not None]
+    guarded_sidecars = [
+        path for path in (outdir / name for name in _GTEX_SIDECARS)
+        if (path == sidecar and "gtex" in annotations) or path.exists() or path.is_symlink()
+    ]  # fmt: skip
     sidecar_inputs = (
         _chain_inputs(params, input_file, lib, sorted(set(annotations) | _VCF_STEPS.keys()))
-        if "gtex" in annotations or sidecar.exists() or sidecar.is_symlink()
+        if guarded_sidecars
         else []
     )  # fmt: skip
 
     def protect_sidecar() -> None:
-        protect_output(sidecar, *sidecar_inputs, final_out)
+        for path in guarded_sidecars:
+            protect_output(path, *sidecar_inputs, final_out)
 
     protect_sidecar()
     result = current_result()
@@ -682,10 +700,10 @@ def run_chain_annotate(
     gtex_table = None
     if "gtex" in annotations:
         require_grch38(input_file, "GTEx")
-        gtex_table = gtex_data.path(lib.root)
+        gtex_table = gtex_data.path(lib.root, params.pairs)
         gtex_receipt = gtex_data.receipt_path(gtex_table)
-        if not gtex_data.installed(gtex_table):
-            raise WGSExtractError(gtex_data.missing(gtex_table))
+        if not gtex_data.installed(gtex_table, pairs=params.pairs):
+            raise WGSExtractError(gtex_data.missing(gtex_table, params.pairs))
         protect_output(final_out, gtex_table, gtex_receipt)
     if params.dry_run:
         result.set_manifest_stem(
@@ -724,6 +742,7 @@ def run_chain_annotate(
                     gtex_table,
                     sidecar,
                     protect_sidecar,
+                    params.pairs,
                 )
             elif journal.dry_run:
                 journal.decide(

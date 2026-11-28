@@ -546,6 +546,8 @@ def annotation_need(command: str, args: argparse.Namespace) -> AnnotationNeed | 
         return None  # The command reports the missing FASTA itself.
     lib = ReferenceLibrary(ref, None, input_path=vcf)
     reported_build = lib.build
+    tissue = getattr(args, "pairs", None) if annotation.resource == "gtex" else None
+    resource_id, name = annotation.resource, annotation.name
     installed = (
         None
         if annotation.resource == "gtex"
@@ -571,8 +573,13 @@ def annotation_need(command: str, args: argparse.Namespace) -> AnnotationNeed | 
         ):
             installed = None
         if annotation.resource == "gtex":
-            table = gtex_data.path(lib.root)
-            installed = str(table) if gtex_data.installed(table, verify=True) else None
+            table = gtex_data.path(lib.root, tissue)
+            installed = (
+                str(table)
+                if gtex_data.installed(table, pairs=tissue, verify=True)
+                else None
+            )
+            resource_id, name = gtex_data.resource(tissue), gtex_data.label(tissue)
     if annotation.option:
         if given := _given_path(args, annotation.option):
             return AnnotationNeed(
@@ -588,6 +595,8 @@ def annotation_need(command: str, args: argparse.Namespace) -> AnnotationNeed | 
     install = ["ref", annotation.resource, *_library_option(lib.root)]
     if annotation.per_build:
         install += ["--build", build]
+    if tissue is not None:
+        install += ["--pairs", tissue]
     if annotation.resource in {"gnomad", "regulatory", "gtex"}:
         install.append("--download")
     return AnnotationNeed(
@@ -597,9 +606,9 @@ def annotation_need(command: str, args: argparse.Namespace) -> AnnotationNeed | 
         fasta=lib.fasta,
         build=reported_build,
         missing=MissingReference(
-            id=annotation.resource,
+            id=resource_id,
             kind="annotation",
-            name=annotation.name,
+            name=name,
             reason=command,
             install_arguments=install,
         ),

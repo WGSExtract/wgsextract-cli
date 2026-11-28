@@ -15,6 +15,7 @@ from .annotation_helpers import annotation_context
 from .basic import vcf_input_handler
 
 GTEX_TSV = "gtex_eqtl.tsv"
+GTEX_PAIRS_TSV = "gtex_eqtl_pairs.tsv"
 
 
 def input_generations(
@@ -46,36 +47,42 @@ def protect_output(output: Path, *inputs: str | Path | None) -> None:
 
 
 def record_sidecar_source(
-    table: Path, source: dict[str, str], metrics: dict[str, int]
+    table: Path, source: dict[str, str], metrics: dict[str, int], pairs: str | None
 ) -> None:
     result = current_result()
     result.set_details({"gtex_source": source})
     result.add_metrics(**metrics)
     result.add_input(table, "gtex_track")
     result.add_input(gtex_data.receipt_path(table), "gtex_track_provenance")
-    resource_releases.record_pinned("gtex", gtex_data.BUILD, table)
+    resource_releases.record_pinned(gtex_data.resource(pairs), gtex_data.BUILD, table)
 
 
 def write_sidecar(
-    input_file: str, table: Path, staged: Path, destination: Path
+    input_file: str, table: Path, staged: Path, destination: Path, pairs: str | None
 ) -> dict[str, int]:
-    with gtex_data.open_track(table, verify=True, cancel=cancel_event()) as (
+    with gtex_data.open_track(
+        table, pairs=pairs, verify=True, cancel=cancel_event()
+    ) as (
         db,
         source,
     ):
-        metrics = gtex_matches.write_matches(input_file, staged, destination, db)
-    record_sidecar_source(table, source, metrics)
+        metrics = gtex_matches.write_matches(
+            input_file, staged, destination, db, pairs=pairs is not None
+        )
+    record_sidecar_source(table, source, metrics, pairs)
     return metrics
 
 
 def run_gtex(params: VcfGtexParams) -> None:
     verify_dependencies(["bcftools"])
-    input_file, outdir, lib = annotation_context(params, GTEX_TSV)
+    pairs = params.pairs
+    filename = GTEX_TSV if pairs is None else GTEX_PAIRS_TSV
+    input_file, outdir, lib = annotation_context(params, filename)
     require_grch38(input_file, "GTEx")
-    table, output = gtex_data.path(lib.root), Path(outdir, GTEX_TSV)
+    table, output = gtex_data.path(lib.root, pairs), Path(outdir, filename)
     protect_output(output, input_file, table, gtex_data.receipt_path(table))
     with atomic_output(output, retire_indexes=False) as staged:
-        write_sidecar(input_file, table, Path(staged), output)
+        write_sidecar(input_file, table, Path(staged), output, pairs)
     current_result().add_output(output, "gtex_eqtl_associations")
 
 

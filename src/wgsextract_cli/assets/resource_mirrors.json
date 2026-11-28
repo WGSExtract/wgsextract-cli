@@ -18,6 +18,20 @@
       "parts": []
     },
     {
+      "id": "gtex-pairs-hg38",
+      "upstream_url": "https://storage.googleapis.com/adult-gtex/bulk-qtl/v10/single-tissue-cis-qtl/GTEx_Analysis_v10_eQTL.tar",
+      "version": "GTEx v10 significant eQTL pairs",
+      "redistributable": false,
+      "licence": "GTEx Portal data release policy",
+      "licence_url": "https://www.gtexportal.org/home/license",
+      "attribution": "Genotype-Tissue Expression (GTEx) Project; https://www.gtexportal.org/",
+      "reason": "Upstream only: the GTEx policy requires attribution and disclosure when redistributing data that are not current.",
+      "retrieved_at": "2026-11-28T16:33:21Z",
+      "size": 2561047718,
+      "sha256": "4a0820369b05cb539c1864720df226fc83e2fdd29dc9ec00568e330e551a4a09",
+      "parts": []
+    },
+    {
       "id": "clinvar-hg38",
       "upstream_mutable": true,
       "upstream_url": "https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/clinvar.vcf.gz",

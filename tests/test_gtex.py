@@ -1,6 +1,7 @@
-"""#1662: pinned GTEx installation and offline exact-ALT associations."""
+"""Pinned GTEx installation and offline exact-ALT associations (#1662, #1669)."""
 
 import csv
+import gzip
 import hashlib
 import io
 import json
@@ -93,6 +94,150 @@ def sample(tmp_path: Path) -> Path:
         newline="\n",
     )
     return input_vcf
+
+
+@pytest.fixture
+def pairs_bundle(monkeypatch):
+    pa = pytest.importorskip("pyarrow")
+    pq = pytest.importorskip("pyarrow.parquet")
+    sink = io.BytesIO()
+    pq.write_table(
+        pa.table(
+            {
+                "gene_id": ["ENSG1.2", "ENSG2.1", "ENSG1.2"],
+                "variant_id": [
+                    "chr1_10_A_C_b38",
+                    "chr1_10_A_C_b38",
+                    "chr1_20_A_AT_b38",
+                ],
+                "pval_nominal": [0.002, 0.001, 0.00005],
+                "slope": pa.array([-0.5, 0.25, 1.5], type=pa.float32()),
+                "slope_se": pa.array([0.125, 0.125, 0.25], type=pa.float32()),
+                "pval_nominal_threshold": [0.002, 0.002, 0.002],
+            }
+        ),
+        sink,
+    )
+    archive = io.BytesIO()
+    with tarfile.open(fileobj=archive, mode="w:gz") as tar:
+        directory = "GTEx_Analysis_v10_eQTL_updated"
+        root = tarfile.TarInfo(directory)
+        root.type = tarfile.DIRTYPE
+        tar.addfile(root)
+        for tissue, second_threshold in (("Whole_Blood", "0.0004"), ("Liver", "0.002")):
+            egenes = gzip.compress(
+                (
+                    "gene_id\tgene_name\tpval_nominal_threshold\n"
+                    "ENSG1.2\tGENE1\t0.002\n"
+                    f"ENSG2.1\tGENE2\t{second_threshold}\n"
+                ).encode()
+            )
+            for suffix, payload in (
+                ("eGenes.txt.gz", egenes),
+                ("eQTLs.signif_pairs.parquet", sink.getvalue()),
+            ):
+                member = tarfile.TarInfo(f"{directory}/{tissue}.v10.{suffix}")
+                member.size = len(payload)
+                tar.addfile(member, io.BytesIO(payload))
+    payload = archive.getvalue()
+    name = "GTEx_Analysis_v10_eQTL.tar"
+    with serving(data=None, files={name: payload}) as server:
+        entry = resource_releases.pinned_resource("gtex-pairs", "hg38")
+        monkeypatch.setitem(entry, "upstream_url", server.url_for(name))
+        monkeypatch.setitem(entry, "sha256", hashlib.sha256(payload).hexdigest())
+        yield server, name
+
+
+def test_1669_pair_install_and_ref_needs_are_tissue_specific(
+    tmp_path, sample, pairs_bundle
+):
+    server, _ = pairs_bundle
+    library = tmp_path / "library"
+    tissue = "Whole_Blood"
+    args = [
+        "vcf", "chain-annotate", "--annotations", "gtex", "--input", str(sample),
+        "--ref", str(library), "--pairs", tissue,
+    ]  # fmt: skip
+    (need,) = check_command(args)
+    assert need.id == "gtex-pairs"
+    assert (need.install_arguments or [])[-3:] == ["--pairs", tissue, "--download"]
+    with pytest.raises(api.CommandFailed, match=r"--pairs Whole_Blood --download"):
+        api.vcf.gtex(api.VcfGtexParams(input=sample, ref=library, pairs=tissue))
+    assert not server.requests
+
+    installed = api.ref.gtex(
+        api.RefGtexParams(ref=library, pairs=tissue, download=True)
+    )
+    assert installed.details["gtex_source"]["tissue"] == tissue
+    requests = list(server.requests)
+    assert requests
+    assert not check_command(args)
+    api.ref.gtex(api.RefGtexParams(ref=library, pairs=tissue, network="off"))
+    with pytest.raises(api.CommandFailed, match=r"--pairs Liver --download"):
+        api.ref.gtex(api.RefGtexParams(ref=library, pairs="Liver", network="off"))
+    assert server.requests == requests
+
+
+@pytest.mark.parametrize("chain", [False, True])
+def test_1669_pairs_are_exact_alt_and_use_the_egene_threshold(
+    tmp_path, sample, pairs_bundle, chain
+):
+    library = tmp_path / "library"
+    tissue = "Whole_Blood"
+    api.ref.gtex(api.RefGtexParams(ref=library, pairs=tissue, download=True))
+    before = sample.read_bytes()
+    common = {
+        "input": sample, "ref": library, "outdir": tmp_path, "network": "off",
+        "pairs": tissue,
+    }  # fmt: skip
+    if chain:
+        result = api.vcf.chain_annotate(
+            api.VcfChainAnnotateParams(**common, annotations="gtex", region="1:10-10")
+        )
+    else:
+        result = api.vcf.gtex(api.VcfGtexParams(**common))
+    assert sample.read_bytes() == before
+    filename = ("chain_" if chain else "") + "gtex_eqtl_pairs.tsv"
+    with (tmp_path / filename).open(encoding="utf-8", newline="") as stream:
+        rows = list(csv.DictReader(stream, delimiter="\t"))
+    expected = [
+        ("10", "C", "3", "ENSG1.2", "0.002", "-0.5", "0.125", "0.002", "1"),
+        ("10", "C", "3", "ENSG2.1", "0.001", "0.25", "0.125", "0.0004", "0"),
+    ]
+    if not chain:
+        expected.append(
+            ("20", "AT", "1", "ENSG1.2", "5e-05", "1.5", "0.25", "0.002", "1")
+        )
+    assert [
+        (
+            row["pos"], row["alt"], row["alt_index"], row["gene_id"], row["pval_nominal"],
+            row["slope"], row["slope_se"], row["pval_nominal_threshold"], row["passes_threshold"],
+        )
+        for row in rows
+    ] == expected  # fmt: skip
+    assert {row["tissue"] for row in rows} == {tissue}
+    assert result.metrics["gtex_associations"] == len(expected)
+    assert any(item.id == "gtex-pairs" for item in result.resources)
+
+
+def test_1669_chain_pair_sidecar_cannot_replace_input(tmp_path, sample):
+    collision = tmp_path / "chain_gtex_eqtl_pairs.tsv"
+    source = sample.read_bytes()
+    sample.rename(collision)
+    with pytest.raises(
+        api.CommandFailed, match=r"chain_gtex_eqtl_pairs\.tsv.*overwrite an input"
+    ):
+        api.vcf.chain_annotate(
+            api.VcfChainAnnotateParams(
+                input=collision,
+                ref=tmp_path,
+                outdir=tmp_path,
+                annotations="gtex",
+                pairs="Whole_Blood",
+                network="off",
+            )  # fmt: skip
+        )
+    assert collision.read_bytes() == source
 
 
 def test_1662_ref_gtex_needs_explicit_download(

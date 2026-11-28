@@ -38,6 +38,7 @@ NAMES = {
     "gerp": "GERP++",
     "gene-list": "Report gene list",
     "gtex": "GTEx v10 SuSiE eQTL",
+    "gtex-pairs": "GTEx v10 significant eQTL pairs",
 }
 # A component table recorded beside its resource, under that resource's terms.
 _TERMS_OF = {"cadd-indel": "cadd"}

@@ -122,8 +122,9 @@ ENTRIES: dict[str, CommandHelp] = {
         f"wgsextract vcf regulatory {_VCF_IN}",
     ),
     "vcf gtex": _h(
-        "gtex_eqtl.tsv (one row per matched ALT, gene, tissue and credible set).",
+        "gtex_eqtl.tsv (SuSiE) or gtex_eqtl_pairs.tsv (significant pairs).",
         f"wgsextract vcf gtex {_VCF_IN}",
+        f"wgsextract vcf gtex {_VCF_IN} --pairs Whole_Blood",
     ),
     "vcf phylop": _h(
         _SCORED.format(name="phylop"),
@@ -166,7 +167,7 @@ ENTRIES: dict[str, CommandHelp] = {
     ),
     "vcf chain-annotate": _h(
         "chain_annotated.vcf.gz (+ index), chain_annotate.steps.json; "
-        "with gtex, chain_gtex_eqtl.tsv; "
+        "with gtex, chain_gtex_eqtl.tsv (or chain_gtex_eqtl_pairs.tsv); "
         "with --to-table, chain_annotated_variants.tsv (or .parquet) and .sqlite.",
         f"wgsextract vcf chain-annotate {_VCF_IN} --annotations clinvar,gnomad "
         "--region chr22:19000000-20000000 --threads 4 --to-table",
