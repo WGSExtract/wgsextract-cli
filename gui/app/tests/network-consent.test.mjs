@@ -11,7 +11,7 @@ import { effectiveNetworkMode, networkAllowed } from "../dist/shared/network-set
 import { loadLocalizedBundle } from "../dist/web/src/server/bundle-loader.js";
 import { createProcessManager } from "../dist/web/src/server/process-runner.js";
 import { createRequestHandler } from "../dist/web/src/server/routes.js";
-import { migrateNetworkSettingsAfterCompletedSetup, readNetworkSettings } from "../dist/web/src/server/network-settings.js";
+import { migrateNetworkSettingsAfterCompletedSetup, readNetworkSettings, saveNetworkSettings } from "../dist/web/src/server/network-settings.js";
 import { createNetworkCostDetector, systemNetworkCost } from "../dist/web/src/server/network-cost/detector.js";
 import { withCliNetworkPolicy } from "../dist/web/src/server/cli-network-policy.js";
 import { appSettingsPath } from "../dist/web/src/server/workspace-location.js";
@@ -48,17 +48,10 @@ async function browserFixture(t, { cost = "unconstrained", cli = false } = {}) {
     const pendingRequests = new Set();
     const manager = createProcessManager({ maxOutputBytes: 1048576, maxErrorBytes: 65536 });
     const server = createServer();
-    let browserServer;
+    let browserContext;
     t.after(async () => {
         try {
-            if (browserServer) {
-                try {
-                    await within(browserServer.close(), "Closing Chromium");
-                } catch (error) {
-                    await within(browserServer.kill(), "Killing Chromium");
-                    throw error;
-                }
-            }
+            if (browserContext) await within(browserContext.close(), "Closing Chromium");
         } finally {
             if (server.listening) {
                 const closed = new Promise((resolve) => server.close(resolve));
@@ -106,9 +99,12 @@ async function browserFixture(t, { cost = "unconstrained", cli = false } = {}) {
         server.once("error", reject);
         server.listen(0, "127.0.0.1", resolve);
     }), "Starting the fixture HTTP server");
-    browserServer = await chromium.launchServer({ executablePath, timeout: browserStartupTimeout });
-    const browser = await chromium.connect(browserServer.wsEndpoint(), { timeout: browserStartupTimeout });
-    const page = await within(browser.newPage({ viewport: { width: 1060, height: 780 } }), "Opening a Chromium page");
+    // Use Chromium's first tab; don't create another renderer through a remote connection during startup.
+    browserContext = await chromium.launchPersistentContext("", {
+        executablePath, timeout: browserStartupTimeout, viewport: { width: 1060, height: 780 },
+    });
+    const [page] = browserContext.pages();
+    assert.ok(page, "Chromium started without an initial page");
     page.setDefaultTimeout(operationTimeout);
     const origin = `http://127.0.0.1:${server.address().port}`;
     const setupCalls = [], external = [];
@@ -144,6 +140,62 @@ async function browserFixture(t, { cost = "unconstrained", cli = false } = {}) {
 }
 
 const browserTestOptions = { skip: !existsSync(executablePath) && "Requires installed Chromium.", timeout: 120_000 };
+
+test("#1674 bootstrap accepts both the pinned CLI and the network-aware tree", async (t) => {
+    const root = await isolatedRoot(t);
+    const appData = path.join(root, "App Data");
+    const appDir = path.relative(root, path.join(appData, "runtime", "wgsextract-cli", "app"));
+    const source = path.join(root, appDir, "src", "wgsextract_cli");
+    await mkdir(path.join(source, "core"), { recursive: true });
+    await writeFile(path.join(source, "__init__.py"), '__version__ = "0.8.10"\n');
+    await writeFile(path.join(source, "core", "network_policy.py"), "");
+    const windows = process.platform === "win32";
+    const extension = windows ? "ps1" : "sh";
+    const script = path.join(root, `bootstrap-reference-library.${extension}`);
+    const localScript = path.join(root, `run-wgsextract.${extension}`);
+    const optionsModule = path.join(source, "core", "network_options.py");
+    const invocation = windows
+        ? ["powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"]]
+        : ["/bin/sh", []];
+    const [executable, args] = invocation;
+    await writeFile(script, windows
+        ? 'if ($args.Count -ne 0) { exit 2 }; Write-Output "BOOTSTRAPPED"\n'
+        : 'if [ "$#" -ne 0 ]; then exit 2; fi; echo BOOTSTRAPPED\n');
+    await writeFile(localScript, windows
+        ? 'if (($args -join " ") -ne "info") { exit 2 }; Write-Output "LOCAL_RESULT"\n'
+        : 'if [ "$*" != info ]; then exit 2; fi; echo LOCAL_RESULT\n');
+    const manager = createProcessManager({ maxOutputBytes: 1024, maxErrorBytes: 1024 });
+    t.after(() => manager.terminateAllProcesses());
+    const run = withCliNetworkPolicy(manager.runProcess);
+    const warnings = [];
+    const env = Object.fromEntries(Object.entries(process.env)
+        .filter(([key]) => !["WGSEXTRACT_APP_DIR", "WGSEXTRACT_GUI_APP_DATA"].includes(key.toUpperCase())));
+    const launch = (target, flags, variable, value) => run(executable, [...args, target, ...flags], {
+        cwd: root, env: { ...env, [windows ? variable.toLowerCase() : variable]: value },
+        onStderr: (text) => warnings.push(text),
+    });
+    const bootstrap = (...flags) => launch(script, flags, "WGSEXTRACT_APP_DIR", appDir);
+    await saveNetworkSettings({ consent: "accepted" });
+    await saveNetworkSettings({ mode: "full" });
+    assert.match((await bootstrap()).stdout, /BOOTSTRAPPED/);
+
+    await saveNetworkSettings({ mode: "low" });
+    assert.match((await bootstrap("--allow-large-download")).stdout, /BOOTSTRAPPED/);
+    for (const mode of ["low", "off"]) {
+        await saveNetworkSettings({ mode });
+        warnings.length = 0;
+        const result = await launch(localScript, ["info"], "WGSEXTRACT_GUI_APP_DATA", appData);
+        assert.match(result.stdout, /LOCAL_RESULT/);
+        assert.match(warnings.join(""), /cannot enforce Low Data or Off.*downloads still require/);
+    }
+
+    await writeFile(optionsModule, "");
+    await writeFile(script, windows
+        ? 'if (($args -join " ") -eq "--allow-large-download --network low") { Write-Output "BOOTSTRAPPED" } else { exit 2 }\n'
+        : 'case "$*" in "--allow-large-download --network low") echo BOOTSTRAPPED;; *) exit 2;; esac\n');
+    await saveNetworkSettings({ mode: "low" });
+    assert.match((await bootstrap("--allow-large-download")).stdout, /BOOTSTRAPPED/);
+});
 
 test("#1591 first launch makes no outbound requests until OK, then starts setup and checks for updates", browserTestOptions, async (t) => {
     const { page, external, setupCalls, updates, startupUpdate } = await browserFixture(t);

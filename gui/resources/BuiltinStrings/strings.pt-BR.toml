@@ -64,7 +64,7 @@
 "app.network.modeOff" = "Desligado"  # i18n-source-hash:e3de5ab0
 "app.network.notNow" = "Agora não"  # i18n-source-hash:e4571490
 "app.network.saveError" = "Não foi possível salvar as configurações de rede. Tente novamente."  # i18n-source-hash:7eecfa8b
-"app.network.settingsDetail" = "O modo automático usa o modo econômico em conexões medidas, limitadas ou de custo desconhecido. O modo econômico pede confirmação para downloads grandes. O modo desligado bloqueia o acesso à rede."  # i18n-source-hash:520425e8
+"app.network.settingsDetail" = "O modo automático usa o modo econômico em conexões medidas, limitadas ou de custo desconhecido. O modo econômico pede confirmação para downloads grandes. O modo desligado bloqueia o acesso à rede. Versões antigas da CLI incluída usam suas próprias permissões de download em vez de aplicar os modos econômico e desligado."  # i18n-source-hash:2bcb117b
 "app.network.title" = "Rede e privacidade"  # i18n-source-hash:ac0186fe
 "app.page.empty.title" = "Nenhuma página"  # i18n-source-hash:d269aee1
 "app.pathPicker.chooseButton.title" = "Escolher..."  # i18n-source-hash:1f77e839

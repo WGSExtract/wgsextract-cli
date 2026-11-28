@@ -637,6 +637,15 @@ class BundleCommandTests(unittest.TestCase):
                 self.fail(message)
             self.skipTest(message)
         invocations = self.cli_invocations()
+        invocations.append(
+            (
+                "confirmed low-data setup",
+                self.sandbox.run_cli_script(
+                    "bootstrap-reference-library.sh",
+                    ["--allow-large-download", "--network", "low"],
+                ),
+            )
+        )
         result = subprocess.run(
             [str(python), "-c", PARSE_CHECK],
             input=json.dumps(

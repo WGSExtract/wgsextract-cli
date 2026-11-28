@@ -1,8 +1,11 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
 import type { NetworkMode } from "../../../shared/network-settings.js";
 import type { RunProcess } from "../../../shared/types.js";
 import { readEffectiveNetworkMode } from "./network-settings.js";
 
 const cliName = /(?:^|[\\/])(?:wgsextract(?:\.exe|\.cmd)?|run-wgsextract\.(?:sh|ps1))$/i;
+const cliWrapperName = /(?:^|[\\/])run-wgsextract\.(?:sh|ps1)$/i;
 const bootstrapName = /(?:^|[\\/])bootstrap-reference-library\.(?:sh|ps1)$/i;
 
 function isWrappedCommand(executable: string, args: string[], name: RegExp) {
@@ -24,6 +27,24 @@ export function isBootstrapLibrary(executable: string, args: string[]) {
     return isWrappedCommand(executable, args, bootstrapName);
 }
 
+function launchEnvValue(env: NodeJS.ProcessEnv, name: string) {
+    if (process.platform !== "win32") return env[name];
+    // Node passes the lexicographically first spelling of a duplicate Windows variable.
+    const key = Object.keys(env).sort().find((key) => key.toUpperCase() === name);
+    return key === undefined ? undefined : env[key];
+}
+
+export function isLegacyBundledCli(executable: string, args: string[], env: NodeJS.ProcessEnv, cwd = process.cwd()) {
+    if (!isWrappedCommand(executable, args, cliWrapperName) && !isBootstrapLibrary(executable, args)) return false;
+    const appData = launchEnvValue(env, "WGSEXTRACT_GUI_APP_DATA");
+    const appDir = launchEnvValue(env, "WGSEXTRACT_APP_DIR") || (appData && path.join(appData, "runtime", "wgsextract-cli", "app"));
+    if (!appDir) return false;
+    const source = path.resolve(cwd, appDir, "src", "wgsextract_cli");
+    // The pinned v0.8.10 and the development tree report the same version.
+    // Check the installed source for the module that introduced network modes.
+    return existsSync(path.join(source, "__init__.py")) && !existsSync(path.join(source, "core", "network_options.py"));
+}
+
 export function cliNetworkArguments(args: string[], mode: NetworkMode) {
     const separator = args.indexOf("--");
     const options = separator < 0 ? args : args.slice(0, separator);
@@ -34,7 +55,19 @@ export function cliNetworkArguments(args: string[], mode: NetworkMode) {
 
 export function withCliNetworkPolicy(runProcess: RunProcess): RunProcess {
     return async (executable, args, options) => {
-        const governed = isWgsExtractCli(executable, args) || isBootstrapLibrary(executable, args);
-        return runProcess(executable, governed ? cliNetworkArguments(args, await readEffectiveNetworkMode()) : args, options);
+        const bootstrap = isBootstrapLibrary(executable, args);
+        if (!bootstrap && !isWgsExtractCli(executable, args)) return runProcess(executable, args, options);
+        const mode = await readEffectiveNetworkMode();
+        if (!isLegacyBundledCli(executable, args, options.env ?? process.env, options.cwd)) {
+            return runProcess(executable, cliNetworkArguments(args, mode), options);
+        }
+        // Setup already enforces consent and supplies this flag only after confirmation.
+        const confirmedBootstrap = bootstrap && args.includes("--allow-large-download");
+        if (mode !== "full") {
+            const warning = "The bundled WGS Extract CLI cannot enforce Low Data or Off mode; downloads still require the CLI's own consent.";
+            if (options.onStderr) await options.onStderr(`${warning}\n`);
+            else console.warn(warning);
+        }
+        return runProcess(executable, confirmedBootstrap ? args.filter((arg) => arg !== "--allow-large-download") : args, options);
     };
 }
