@@ -36,7 +36,7 @@ export function isLegacyBundledCli(executable: string, args: string[], env: Node
     const source = path.resolve(cwd, appDir, "src", "wgsextract_cli");
     // The pinned v0.8.10 and the development tree report the same version.
     // Check the installed source for the module that introduced network modes.
-    return existsSync(path.join(source, "__init__.py")) && !existsSync(path.join(source, "core", "network_policy.py"));
+    return existsSync(path.join(source, "__init__.py")) && !existsSync(path.join(source, "core", "network_options.py"));
 }
 
 export function cliNetworkArguments(args: string[], mode: NetworkMode) {

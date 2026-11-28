@@ -152,9 +152,10 @@ test("#1674 bootstrap accepts both the pinned CLI and the network-aware tree", a
     const source = path.join(root, appDir, "src", "wgsextract_cli");
     await mkdir(path.join(source, "core"), { recursive: true });
     await writeFile(path.join(source, "__init__.py"), '__version__ = "0.8.10"\n');
+    await writeFile(path.join(source, "core", "network_policy.py"), "");
     const windows = process.platform === "win32";
     const script = path.join(root, `bootstrap-reference-library.${windows ? "ps1" : "sh"}`);
-    const policyModule = path.join(source, "core", "network_policy.py");
+    const optionsModule = path.join(source, "core", "network_options.py");
     const invocation = windows
         ? ["powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script]]
         : ["/bin/sh", [script]];
@@ -176,7 +177,7 @@ test("#1674 bootstrap accepts both the pinned CLI and the network-aware tree", a
     await saveNetworkSettings({ mode: "off" });
     await assert.rejects(launch("--allow-large-download"), { status: 403 });
 
-    await writeFile(policyModule, "");
+    await writeFile(optionsModule, "");
     await writeFile(script, windows
         ? 'if (($args -join " ") -eq "--allow-large-download --network low") { Write-Output "BOOTSTRAPPED" } else { exit 2 }\n'
         : 'case "$*" in "--allow-large-download --network low") echo BOOTSTRAPPED;; *) exit 2;; esac\n');
