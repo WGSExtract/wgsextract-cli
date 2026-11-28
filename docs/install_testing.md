@@ -117,8 +117,9 @@ Unknown; the lab must not bypass the product's unknown-sex ploidy safeguard.
 
 Its truncated, rebased contigs also cannot confirm the full hg19 assembly.
 The CLI workload passes the fixture's ploidy explicitly for microarray; the
-current-tree app workload puts the same file in its test reference library
-for SNP and microarray calling. The file uses mini-genome coordinates.
+app workload puts the same file in its test reference library for SNP and
+microarray calling, whether Setup installs the current tree or the CLI pinned
+by the app. The file uses mini-genome coordinates.
 
 The mini genome has **5x coverage**, below microarray's default DP ≥10/GQ ≥20
 evidence gates. The scenario keeps those real-user defaults and requests
