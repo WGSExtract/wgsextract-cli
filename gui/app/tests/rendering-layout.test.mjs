@@ -216,13 +216,106 @@ test("setup steps name their kind in words, never the manifest id", async () => 
       id: "demo", pages: [],
       setup: { steps: [...setupStepKinds, "futureKind"].map((kind) => ({ id: kind, kind, label: kind, value: "x" })) },
     };
-    const kinds = [...renderSetupStatusSection().matchAll(/class="setup-step-kind">([^<]*)</g)].map((match) => match[1]);
+    const [appUpdater, ...kinds] = [...renderSetupStatusSection().matchAll(/class="setup-step-kind">([^<]*)</g)].map((match) => match[1]);
+    assert.equal(appUpdater, state.labels.setupStepKindAppUpdateLabel, "the app's own update check comes first");
     assert.equal(kinds.length, setupStepKinds.length + 1);
     assert.equal(kinds.at(-1), "", "an unknown kind shows nothing");
     for (const [index, kind] of setupStepKinds.entries()) {
       assert.ok(kinds[index] && kinds[index] !== kind, `${locale}: ${kind} shows "${kinds[index]}"`);
     }
   }
+});
+
+test("setup's first step reports the app's own update check", async () => {
+  // Owner request: rerunning setup also shows whether the app itself needs an update.
+  const { state, renderSetupStatusSection } = await clientView();
+  state.labels = {};
+  state.manifest = { id: "demo", pages: [], setup: { steps: [{ id: "tool", kind: "pathTool", label: "Tool", value: "x" }] } };
+  state.networkSettings = { consent: "accepted", allowUpdateChecks: true, mode: "full", detectedCost: "unknown" };
+  const appRow = () => {
+    const html = renderSetupStatusSection();
+    const row = /<li class="setup-step (\w+)" data-setup-app-update>[\s\S]*?class="setup-step-label">([^<]*)</.exec(html);
+    assert.ok(row, "the app update row renders");
+    assert.ok(html.indexOf("data-setup-app-update") < html.indexOf(">Tool<"), "it is the first step");
+    return [row[1], row[2]];
+  };
+  Object.assign(state.update, { supported: false, checked: false, status: "idle" });
+  assert.deepEqual(appRow(), ["pending", "Unavailable"]);
+  Object.assign(state.update, { supported: true, status: "checking" });
+  assert.deepEqual(appRow(), ["running", "Running"]);
+  Object.assign(state.update, { checked: true, status: "none" });
+  assert.deepEqual(appRow(), ["ok", "OK"]);
+  Object.assign(state.update, { status: "available" });
+  assert.deepEqual(appRow(), ["warning", "Update available"]);
+  Object.assign(state.update, { status: "error" });
+  assert.deepEqual(appRow(), ["failed", "Failed"]);
+  // A failed startup check is quiet in the sidebar, but Setup reports it.
+  Object.assign(state.update, { checked: true, status: "idle" });
+  assert.deepEqual(appRow(), ["failed", "Failed"]);
+  // A found update stays reported after its download fails.
+  Object.assign(state.update, { status: "error", availableVersion: "0.9.1" });
+  assert.deepEqual(appRow(), ["warning", "Update available"]);
+  Object.assign(state.update, { status: "none", availableVersion: "" });
+  state.networkSettings.allowUpdateChecks = false;
+  assert.deepEqual(appRow(), ["pending", "Off"]);
+  Object.assign(state.networkSettings, { allowUpdateChecks: true, mode: "off" });
+  assert.deepEqual(appRow(), ["pending", "Off"]);
+});
+
+test("Setup ends with Network mode and Allow check for updates, greyed out and unchecked while Off", async () => {
+  // Owner request: Network mode sits at the bottom of Setup, with a separate update-check checkbox.
+  const { state, renderSetupStatusSection } = await clientView();
+  state.labels = { networkMode: "Network mode" };
+  state.manifest = { id: "demo", pages: [], setup: { steps: [{ id: "tool", kind: "pathTool", label: "Tool", value: "x" }] } };
+  state.setupRun = { status: "ok", results: [] };
+  state.setupExpanded = false;
+  const checkbox = () => /<input type="checkbox" data-network-setting="allowUpdateChecks"[^>]*>/.exec(renderSetupStatusSection())?.[0] ?? "";
+  state.networkSettings = { consent: "accepted", allowUpdateChecks: true, mode: "low", detectedCost: "unknown" };
+  const html = renderSetupStatusSection();
+  assert.match(html, /id="network-mode-picker"/, "visible even with the steps collapsed");
+  assert.ok(html.indexOf("network-mode-picker") < html.indexOf("allowUpdateChecks"), "the checkbox is below Network mode");
+  assert.match(checkbox(), / checked/);
+  assert.doesNotMatch(checkbox(), /disabled/);
+  state.networkSettings.allowUpdateChecks = false;
+  assert.doesNotMatch(checkbox(), / checked/);
+  Object.assign(state.networkSettings, { allowUpdateChecks: true, mode: "off" });
+  assert.doesNotMatch(checkbox(), / checked/);
+  assert.match(checkbox(), /disabled/);
+});
+
+test("the app version turns red when out of date, and a development run always is", async () => {
+  // Owner request: an out-of-date version shows in red; Dev mode is out of date by definition.
+  const { state, renderBundleHeader } = await clientView();
+  state.labels = { setupVersionLabel: "Version", appVersionDevLabel: "Dev" };
+  state.manifest = { id: "demo", displayName: "Demo", pages: [] };
+  const version = () => /<p class="app-version([^"]*)"[^>]*>([^<]*)</.exec(renderBundleHeader())?.slice(1, 3);
+  Object.assign(state, { appVersion: "0.9.0", appVersionDev: false });
+  Object.assign(state.update, { status: "none" });
+  assert.deepEqual(version(), ["", "Version 0.9.0"]);
+  state.update.status = "available";
+  assert.deepEqual(version(), [" out-of-date", "Version 0.9.0"]);
+  // A failed download or install, or checking again, keeps the version the check found.
+  Object.assign(state.update, { status: "error", availableVersion: "0.9.1" });
+  assert.deepEqual(version(), [" out-of-date", "Version 0.9.0"]);
+  Object.assign(state.update, { status: "checking" });
+  assert.deepEqual(version(), [" out-of-date", "Version 0.9.0"]);
+  Object.assign(state.update, { status: "none", availableVersion: "" });
+  Object.assign(state, { appVersionDev: true });
+  state.update.status = "none";
+  assert.deepEqual(version(), [" out-of-date", "Version 0.9.0 Dev"]);
+});
+
+test("Standard UI Options starts collapsed and opens with its toggle", async () => {
+  // Owner request: Standard UI Options is collapsible, collapsed by default.
+  const { state, renderStandardOptionsAccessory } = await clientView();
+  state.labels = { standardOptionsSectionTitle: "Standard UI Options", networkMode: "Network mode" };
+  const html = () => renderStandardOptionsAccessory();
+  assert.match(html(), /data-section-toggle="settings\/standard-ui-options" aria-expanded="false"/);
+  assert.doesNotMatch(html(), /data-locale-picker|data-icon-set-picker/);
+  state.toggledSections.add("settings/standard-ui-options");
+  assert.match(html(), /aria-expanded="true"/);
+  assert.match(html(), /data-icon-set-picker/);
+  assert.doesNotMatch(html(), /network-mode-picker/, "Network mode lives in Setup");
 });
 
 test("a long library table scrolls under a header row that stays in view", async () => {
@@ -235,11 +328,48 @@ test("a long library table scrolls under a header row that stays in view", async
     { pageID: "genomes", sectionID: "list", controlID: "genomes" },
   );
   // The table is its own scroll area: keyboard-scrollable, named, and keyed so a re-render keeps its place.
-  assert.match(html, /class="table-wrap" data-scroll-key="control:genomes" tabindex="0" role="region" aria-label="Genomes"><table>\s*<thead><tr>\s*<th>Name<\/th>/);
+  assert.match(html, /class="table-wrap" data-scroll-key="control:genomes" tabindex="0" role="region" aria-label="Genomes"><table>\s*<thead><tr>\s*<th aria-sort="none"><button type="button" class="column-sort" data-library-sort="control:genomes" data-library-sort-column="name"[^>]*>Name</);
 
   const css = readFileSync(new URL("../web/styles.css", import.meta.url), "utf8");
   assert.match(css, /\.table-wrap \{[^}]*max-height:[^}]*overflow: auto;/);
   assert.match(css, /\.table-wrap thead th \{[^}]*position: sticky;[^}]*top: 0;/);
+});
+
+test("library table headings sort ascending, then descending, and Default Sort restores the original order", async () => {
+  // Owner request: sortable column headings on Reference Data, Reference Genomes and Tools, and a Default Sort button.
+  const { state, renderLibraryList } = await clientView();
+  const { nextLibrarySort } = await import("../dist/web/src/client/view/library-sort.js");
+  state.labels = { actionsColumnTitle: "Actions", librarySortDefaultTitle: "Default Sort", libraryFilterLabel: "Filter" };
+  const control = {
+    id: "genomes", kind: "libraryList", label: "Genomes",
+    columns: [{ id: "name", title: "Name" }, { id: "size", title: "Size" }],
+    rowTemplate: { id: "{{id}}", title: "{{id}}", values: { size: "{{size}}" } },
+    items: [{ id: "hs38", size: "3.1 GB" }, { id: "T2T v10", size: "" }, { id: "hg19", size: "900 MB" }, { id: "T2T v9", size: "12 GB" }],
+  };
+  const render = () => renderLibraryList(control, { fieldValues: {}, checkedOptions: {}, configValues: {}, rowValues: {} }, { pageID: "genomes", sectionID: "list", controlID: "genomes" });
+  const cells = (index) => [...render().matchAll(/<tr data-filter-text=[^>]*>([\s\S]*?)<\/tr>/g)]
+    .map((row) => [...row[1].matchAll(/<td>([\s\S]*?)<\/td>/g)][index]?.[1].replace(/<[^>]*>/g, "").trim());
+  const sort = (column) => state.librarySorts.set("control:genomes", nextLibrarySort(state.librarySorts.get("control:genomes"), column));
+  const resetButton = () => /<button[^>]*data-library-sort-reset="control:genomes"[^>]*>/.exec(render())?.[0] ?? "";
+  const original = cells(0);
+  assert.deepEqual(original, ["hs38", "T2T v10", "hg19", "T2T v9"]);
+  assert.match(resetButton(), /disabled/, "nothing to reset before a column is chosen");
+
+  sort("size");
+  assert.deepEqual(cells(1), ["900 MB", "3.1 GB", "12 GB", ""], "sizes compare by bytes, ascending first; an empty cell stays last");
+  assert.match(render(), /<th aria-sort="ascending"><button[^>]*data-library-sort-column="size"[^>]*>Size<span class="column-sort-arrow" aria-hidden="true">▲</);
+  assert.doesNotMatch(resetButton(), /disabled/);
+
+  sort("size");
+  assert.deepEqual(cells(1), ["12 GB", "3.1 GB", "900 MB", ""], "a second click reverses; an empty cell still stays last");
+  assert.match(render(), /<th aria-sort="descending"><button[^>]*data-library-sort-column="size"[^>]*>Size<span class="column-sort-arrow" aria-hidden="true">▼</);
+
+  sort("name");
+  assert.deepEqual(cells(0), ["hg19", "hs38", "T2T v9", "T2T v10"], "another column starts ascending, in natural order");
+
+  state.librarySorts.delete("control:genomes");
+  assert.deepEqual(cells(0), original, "Default Sort restores the data source's order");
+  assert.match(resetButton(), /disabled/);
 });
 
 test("re-rendering keeps a scrolled table where it was", async () => {

@@ -94,23 +94,6 @@
       "minimumOptions": 1
     },
     {
-      "id": "ref_dropdown_settings",
-      "kind": "dataSource",
-      "pageID": "settings",
-      "sectionID": "settings-paths",
-      "controlID": "wgs_settings",
-      "settingID": "ref_fasta",
-      "inputs": {
-        "fieldValues": {
-          "ref_path": "{{usersWorkspace}}/reference"
-        }
-      },
-      "requiredOutput": [
-        "hs38 (Nebula) (GitHub)"
-      ],
-      "minimumOptions": 1
-    },
-    {
       "id": "ref_library_list",
       "kind": "dataSource",
       "pageID": "reference-genomes",

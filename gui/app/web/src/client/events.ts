@@ -21,11 +21,11 @@ import { activeTerminalCopyText, appendTerminal, closeTerminalTab, openJob } fro
 import { applyUIModeTerminalVisibility, setTerminalVisible } from "./terminal-visibility.js";
 import { bindTooltipEvents } from "./tooltips.js";
 import { bindWorkspaceLocationEvents } from "./workspace-location.js";
-import { bindCollapsibleSections } from "./view/collapsible.js";
 import { setupPageID } from "./view.js";
 import type { ConfigSetting, ControlSpec } from "../../../shared/types.js";
 import { normalizeUIMode } from "../../../shared/ui-mode.js";
 import { bindNetworkSettings } from "./network-consent.js";
+import { nextLibrarySort } from "./view/library-sort.js";
 
 const app: HTMLElement = (() => {
     const el = document.querySelector<HTMLElement>("#app");
@@ -114,7 +114,6 @@ export function bindEvents(bootstrap: Bootstrap) {
         await openBundleWorkspace();
     });
     bindWorkspaceLocationEvents(app);
-    bindCollapsibleSections(app);
     app.querySelector("[data-load-bundle]")?.addEventListener("click", async () => {
         await loadBundleFromPicker(bootstrap);
     });
@@ -330,6 +329,19 @@ export function bindEvents(bootstrap: Bootstrap) {
             });
             const none = table?.querySelector<HTMLElement>("[data-library-no-matches]");
             if (none) none.hidden = shown > 0;
+        });
+    });
+    elements("[data-library-sort]").forEach((button) => {
+        button.addEventListener("click", () => {
+            const key = requiredDataset(button, "librarySort");
+            state.librarySorts.set(key, nextLibrarySort(state.librarySorts.get(key), requiredDataset(button, "librarySortColumn")));
+            scheduleRender();
+        });
+    });
+    elements("[data-library-sort-reset]").forEach((button) => {
+        button.addEventListener("click", () => {
+            state.librarySorts.delete(requiredDataset(button, "librarySortReset"));
+            scheduleRender();
         });
     });
     elements<HTMLInputElement>("[data-library-hide-rows]").forEach((input) => {

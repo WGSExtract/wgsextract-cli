@@ -9,6 +9,7 @@ import { persistBundleState } from "./operations-state.js";
 import { resolveSetupPreflight } from "./operations-setup-preflight.js";
 import { effectiveNetworkMode, networkAllowed } from "../../../shared/network-settings.js";
 import { fetchNetworkSettings } from "./network-consent.js";
+import { checkForUpdates } from "./tauri-updater.js";
 import type { SetupRun, SetupStepResult, TerminalEntry } from "../../../shared/types.js";
 
 let setupElapsedTimer: ReturnType<typeof setInterval> | null = null;
@@ -23,6 +24,8 @@ export async function runSetup(automatic = false) {
     const mode = effectiveNetworkMode(settings);
     const allowLargeDownload = mode === "low" && window.confirm(state.labels.networkConfirmSetup ?? "");
     if (mode === "low" && !allowLargeDownload) return;
+    // Rerunning setup also checks whether the app itself has an update, when allowed; at startup the launch check does.
+    if (!automatic && settings.allowUpdateChecks) void checkForUpdates({ revealOnAvailable: true });
     const preflight = await resolveSetupPreflight();
     if (runningSetup) return;
     if (preflight?.severity === "warning") {

@@ -372,6 +372,7 @@
               "label": "controls.settings.settings-paths.out_dir.label",
               "kind": "path",
               "tooltip": "controls.settings.settings-paths.out_dir.tooltip",
+              "placeholder": "controls.settings.settings-paths.out_dir.placeholder",
               "moveContents": true,
               "advancedOnly": true
             },
@@ -438,70 +439,12 @@
               "kind": "toggle",
               "value": false,
               "tooltip": "controls.settings.privacy.downloads.tooltip"
-            },
-            {
-              "id": "ref_fasta",
-              "key": "reference_fasta",
-              "label": "controls.settings.settings-paths.ref_fasta.label",
-              "kind": "dropdown",
-              "tooltip": "controls.settings.settings-paths.ref_fasta.tooltip",
-              "dataSource": {
-                "path": "scripts/run-wgsextract.sh",
-                "arguments": [
-                  "--json",
-                  "ref",
-                  "library",
-                  "--list"
-                ],
-                "optionalArguments": [
-                  [
-                    "--ref",
-                    "{{ref_path}}"
-                  ]
-                ],
-                "transform": {
-                  "module": "transforms/reference-genomes.mjs",
-                  "export": "options"
-                }
-              }
-            },
-            {
-              "id": "vcf_path",
-              "key": "default_input_vcf",
-              "label": "controls.settings.settings-paths.vcf_path.label",
-              "kind": "path",
-              "defaultDirectory": "{{mygenomes_library}}",
-              "tooltip": "controls.settings.settings-paths.vcf_path.tooltip"
-            },
-            {
-              "id": "mother_vcf_path",
-              "key": "mother_vcf_path",
-              "label": "controls.settings.settings-paths.mother_vcf_path.label",
-              "kind": "path",
-              "defaultDirectory": "{{mygenomes_library}}",
-              "tooltip": "controls.settings.settings-paths.mother_vcf_path.tooltip"
-            },
-            {
-              "id": "father_vcf_path",
-              "key": "father_vcf_path",
-              "label": "controls.settings.settings-paths.father_vcf_path.label",
-              "kind": "path",
-              "defaultDirectory": "{{mygenomes_library}}",
-              "tooltip": "controls.settings.settings-paths.father_vcf_path.tooltip"
-            },
-            {
-              "id": "haplogrep_path",
-              "key": "haplogrep_executable",
-              "label": "controls.settings.settings-paths.haplogrep_path.label",
-              "kind": "path",
-              "tooltip": "controls.settings.settings-paths.haplogrep_path.tooltip"
             }
           ]
         }
       ],
       "iconName": "workspace",
       "textIcon": "🗂️",
-      "advancedOnly": true,
       "collapsed": true
     }
   ],

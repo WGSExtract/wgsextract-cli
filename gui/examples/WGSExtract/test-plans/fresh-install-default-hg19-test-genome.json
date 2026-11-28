@@ -117,18 +117,6 @@
       ]
     },
     {
-      "id": "reference-dropdown-settings",
-      "kind": "dataSource",
-      "pageID": "settings",
-      "sectionID": "settings-paths",
-      "controlID": "wgs_settings",
-      "settingID": "ref_fasta",
-      "minimumOptions": 1,
-      "requiredOutput": [
-        "hg19 (Yoruba"
-      ]
-    },
-    {
       "id": "reference-library-list",
       "kind": "dataSource",
       "pageID": "reference-genomes",

@@ -1,12 +1,14 @@
 import { escapeAttribute, escapeHTML } from "../dom.js";
-import { formatLabel, renderIcon, renderIconTitle } from "../model.js";
+import { renderIcon, renderIconTitle } from "../model.js";
 import { state } from "../state.js";
 import { setupToolSummary } from "./setup-tool-summary.js";
+import { renderAppUpdateStepStatus } from "./setup-app-update.js";
+import { renderSetupNetworkControls } from "./setup-network.js";
 import { formatDurationMs } from "../../../../shared/rendering.js";
 import { setupStepsForPlatform } from "../../../../shared/setup-platforms.js";
 import { isSetupStepKind, setupStepKindLabelKeys } from "../../../../shared/setup-step-kinds.js";
 import type { LocalizedOption, SetupRun, SetupStep, SetupStepResult } from "../../../../shared/types.js";
-import { effectiveNetworkMode, networkPreferences } from "../../../../shared/network-settings.js";
+import { effectiveNetworkMode } from "../../../../shared/network-settings.js";
 
 export function renderSetupStatusSection() {
   const steps = setupStepsForPlatform(state.manifest?.setup?.steps ?? []);
@@ -48,9 +50,11 @@ export function renderSetupStatusSection() {
       </div>
       ${expanded
         ? `<ol class="setup-step-list">
+          ${renderAppUpdateStepStatus()}
           ${steps.map((step) => renderSetupStepStatus(step, resultsByID.get(step.id), setupRun.currentStepID === step.id)).join("")}
         </ol>`
         : ""}
+      ${renderSetupNetworkControls()}
     </section>
   `;
 }
@@ -126,17 +130,34 @@ function setupStatusGlyph(status: string) {
   }
 }
 
+/** Standard UI Options starts collapsed; the key, once toggled, holds it open like a bundle section's. */
+const standardOptionsToggleKey = "settings/standard-ui-options";
+
 export function renderStandardOptionsAccessory() {
+  const expanded = state.toggledSections.has(standardOptionsToggleKey);
+  const title = state.labels.standardOptionsSectionTitle ?? "";
+  const verb = expanded ? state.labels.sectionCollapseLabel ?? "Collapse Section" : state.labels.sectionExpandLabel ?? "Expand Section";
+  const toggle = `<button type="button" class="section-toggle" data-section-toggle="${standardOptionsToggleKey}" aria-expanded="${expanded}" aria-controls="standard-options-body" title="${escapeAttribute(verb)}" aria-label="${escapeAttribute(`${verb}: ${title}`)}">${expanded ? renderIcon("chevron.up", undefined, "⌃") : renderIcon("chevron.down", undefined, "⌄")}</button>`;
+  return `
+    <section class="card standard-options-card${expanded ? "" : " collapsed"}" id="standard-options-body" aria-labelledby="standard-options-title">
+      <header class="section-header collapsible">
+        <div class="section-heading">
+          <h3 id="standard-options-title">${renderIconTitle(title, "slider.horizontal.3", undefined, "⚙️")}</h3>
+        </div>
+        ${toggle}
+      </header>
+      ${expanded ? renderStandardOptionsControls() : ""}
+    </section>
+  `;
+}
+
+function renderStandardOptionsControls() {
   const currentOption = state.localizationOptions.find((option) => option.code === state.localizationCode);
   const currentName = currentOption ? languageOptionLabel(currentOption) : state.localizationCode;
   const systemLabel = currentName
     ? `${state.labels.languageSystemDefaultLabel ?? "Use system default"} — ${currentName}`
     : state.labels.languageSystemDefaultLabel ?? "Use system default";
   return `
-    <section class="card standard-options-card">
-      <header class="section-header">
-        <h3>${renderIconTitle(state.labels.standardOptionsSectionTitle, "slider.horizontal.3", undefined, "⚙️")}</h3>
-      </header>
       <div class="controls">
         ${state.localizationOptions.length > 1
           ? `<label class="form-row">
@@ -171,41 +192,9 @@ export function renderStandardOptionsAccessory() {
             <option value="sfPro" ${state.webUIFont === "sfPro" ? "selected" : ""}>${escapeHTML(state.labels.webUIFontSFProLabel ?? "SF Pro when available")}</option>
           </select>
         </label>
-      </div>
-    </section>
-  `;
+      </div>`;
 }
 
-export function renderNetworkSettings() {
-  const { labels, networkSettings } = state;
-  const modes = { automatic: labels.networkModeAutomatic, full: labels.networkModeFull, low: labels.networkModeLow, off: labels.networkModeOff };
-  const costs = { constrained: labels.networkCostConstrained, unconstrained: labels.networkCostUnconstrained, unknown: labels.networkCostUnknown };
-  const effectiveMode = effectiveNetworkMode(networkSettings);
-  const status = formatLabel(labels.networkEffective ?? "", { mode: modes[effectiveMode] ?? "" });
-  return `
-    <section class="card" data-network-settings data-effective-network-mode="${effectiveMode}" tabindex="-1" aria-labelledby="network-settings-title">
-      <h3 id="network-settings-title">${escapeHTML(labels.networkTitle ?? "")}</h3>
-      <p class="muted">${escapeHTML(labels.networkSettingsDetail ?? "")}</p>
-      <div class="network-settings-options">
-        <label class="network-mode-picker">
-          <span>${escapeHTML(labels.networkMode ?? "")}</span>
-          <select data-network-setting="mode" aria-describedby="network-cost-status">
-            ${networkPreferences.map((mode) => `<option value="${mode}" ${networkSettings.mode === mode ? "selected" : ""}>${escapeHTML(modes[mode] ?? "")}</option>`).join("")}
-          </select>
-        </label>
-        <p class="muted network-cost-status" id="network-cost-status" role="status">${escapeHTML(costs[networkSettings.detectedCost] ?? "")} · ${escapeHTML(status)}</p>
-        <label>
-          <input type="checkbox" data-network-setting="checkForUpdatesAtLaunch" ${networkSettings.checkForUpdatesAtLaunch ? "checked" : ""}>
-          ${escapeHTML(labels.networkLaunchCheck ?? "")}
-        </label>
-        <label title="${escapeAttribute(labels.privacyModeTooltip ?? "")}">
-          <input type="checkbox" data-network-setting="privacyMode" ${networkSettings.privacyMode ? "checked" : ""}>
-          ${escapeHTML(labels.privacyModeLabel ?? "")}
-        </label>
-      </div>
-      <p class="inline-error" data-network-settings-error role="alert" hidden></p>
-    </section>`;
-}
 function languageOptionLabel(option: LocalizedOption) {
   return option.isAITranslated
     ? `${option.displayName} - ${state.labels.languageAITranslatedLabel ?? "AI translated"}`

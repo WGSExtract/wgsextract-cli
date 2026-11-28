@@ -896,8 +896,9 @@ test("#1591 a fresh desktop blocks downloads until a choice, persists it, and pr
   await writeFile(settingsPath, JSON.stringify({ usersWorkspaces: { "test-bundle": "/kept" } }));
 
   const settings = "/api/network-settings";
-  assert.equal((await apiFetch(baseURL, settings, { body: { privacyMode: "yes" } })).status, 400);
-  assert.equal((await apiFetch(baseURL, settings, { body: { checkForUpdatesAtLaunch: true } })).status, 409);
+  assert.equal((await apiFetch(baseURL, settings, { body: { mode: "fast" } })).status, 400);
+  assert.equal((await apiFetch(baseURL, settings, { body: { allowUpdateChecks: "yes" } })).status, 400);
+  assert.equal((await apiFetch(baseURL, settings, { body: { mode: "full" } })).status, 409);
   const setup = "/api/setup/stream";
   assert.equal((await apiFetch(baseURL, setup, { body: {} })).status, 403);
   assert.equal((await apiFetch(baseURL, "/api/gene/iobio/open", { body: {} })).status, 403);
@@ -907,13 +908,21 @@ test("#1591 a fresh desktop blocks downloads until a choice, persists it, and pr
   assert.equal((await apiFetch(baseURL, setup, { body: { automatic: true } })).status, 403);
   const stale = await apiFetch(baseURL, settings, { body: { consent: "accepted" } });
   assert.equal((await stale.json()).recordedChoice, false);
-  await apiFetch(baseURL, settings, { body: { privacyMode: true } });
+  await apiFetch(baseURL, settings, { body: { mode: "off" } });
   const manifest = await (await apiFetch(baseURL, "/api/manifest")).json();
   assert.equal(manifest.networkSettings.consent, "deferred");
-  assert.equal(manifest.networkSettings.privacyMode, true);
-  assert.equal(manifest.networkSettings.checkForUpdatesAtLaunch, false);
-  assert.equal(manifest.networkSettings.mode, "automatic");
+  assert.equal(manifest.networkSettings.allowUpdateChecks, false, "Not now turns update checks off");
+  assert.equal(manifest.networkSettings.mode, "off");
+  assert.equal((await apiFetch(baseURL, setup, { body: {} })).status, 403);
   assert.deepEqual(JSON.parse(await readFile(settingsPath, "utf8")).usersWorkspaces, { "test-bundle": "/kept" });
+
+  // Running setup yourself answers the question Not now put off.
+  await apiFetch(baseURL, settings, { body: { mode: "full" } });
+  const manual = await apiFetch(baseURL, setup, { body: {} });
+  assert.equal(manual.status, 200);
+  await readNDJSON(manual);
+  const afterSetup = await (await apiFetch(baseURL, settings, { method: "GET" })).json();
+  assert.deepEqual([afterSetup.consent, afterSetup.allowUpdateChecks], ["accepted", false]);
 });
 
 test("#1591 setup over a metered connection requires confirmation even if the browser sends a request", async (t) => {

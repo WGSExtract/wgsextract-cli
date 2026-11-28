@@ -20,7 +20,7 @@ globalThis.fetch = async () => Response.json(state.networkSettings);
 function resetState() {
   Object.assign(state, createInitialState(), {
     applicationVersion: "1.0.0",
-    networkSettings: { consent: "accepted", privacyMode: false, checkForUpdatesAtLaunch: true, mode: "automatic", detectedCost: "unconstrained" },
+    networkSettings: { consent: "accepted", allowUpdateChecks: true, mode: "automatic", detectedCost: "unconstrained" },
   });
   delete globalThis.window.__TAURI__;
 }
@@ -156,11 +156,11 @@ test("does not invoke install without both updater resources", async () => {
   assert.equal(state.update.status, "idle");
 });
 
-test("#1052 Privacy mode keeps startup offline while subscribing to local updater progress", async () => {
+test("#1052 Network mode Off keeps startup offline while subscribing to local updater progress", async () => {
   resetState();
-  // The desktop shell asks for the startup check; Privacy mode overrides it.
+  // The desktop shell asks for the startup check; Network mode Off overrides it.
   state.autoUpdate = true;
-  state.networkSettings.privacyMode = true;
+  state.networkSettings.mode = "off";
   let progressHandler;
   const originalSetTimeout = globalThis.window.setTimeout;
   const pending = [];
@@ -295,7 +295,30 @@ test("a check the user asked for still reports its failure", async () => {
   assert.equal(state.update.message, "error sending request for url");
 });
 
-test("turning on Privacy mode before the delayed startup check fires cancels it", async () => {
+test("unchecking Allow check for updates stops the startup check but not File > Check for Updates", async () => {
+  resetState();
+  state.autoUpdate = true;
+  state.networkSettings.allowUpdateChecks = false;
+  const originalSetTimeout = globalThis.window.setTimeout;
+  const pending = [];
+  globalThis.window.setTimeout = (callback) => { pending.push(callback); return 0; };
+  const commands = [];
+  setTauriMock(async (command) => { commands.push(command); return {}; });
+  try {
+    const updater = await freshUpdater("startup-update-checks-off");
+    updater.initializeTauriUpdater();
+    await new Promise((resolve) => setImmediate(resolve));
+    for (const callback of pending.splice(0)) callback();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(commands, []);
+    await updater.checkForUpdates();
+    assert.deepEqual(commands, ["gfc_update_check"]);
+  } finally {
+    globalThis.window.setTimeout = originalSetTimeout;
+  }
+});
+
+test("switching Network mode to Off before the delayed startup check fires cancels it", async () => {
   resetState();
   state.autoUpdate = true;
   const originalSetTimeout = globalThis.window.setTimeout;
@@ -308,7 +331,7 @@ test("turning on Privacy mode before the delayed startup check fires cancels it"
     updater.initializeTauriUpdater();
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(pending.length, 1);
-    state.networkSettings.privacyMode = true;
+    state.networkSettings.mode = "off";
     pending[0]();
     await new Promise((resolve) => setImmediate(resolve));
   } finally {

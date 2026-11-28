@@ -1,12 +1,9 @@
 import { escapeAttribute, escapeHTML } from "../dom.js";
-import { formatLabel, renderIconTitle } from "../model.js";
+import { formatLabel } from "../model.js";
 import { state } from "../state.js";
-import { renderCollapsibleCard } from "./collapsible.js";
 
-/** The section ID the users workspace card opens and closes under. */
-export const workspaceLocationSectionID = "users-workspace-location";
-
-export function renderWorkspaceLocationSection() {
+/** The users workspace's own rows, at the top of the section holding the settings file's editor. */
+export function renderWorkspaceLocationRows() {
     const location = state.workspaceLocation;
     if (!location) {
         return "";
@@ -16,9 +13,7 @@ export function renderWorkspaceLocationSection() {
     const label = state.labels.workspaceLocationFolderLabel;
     const draft = state.workspaceLocationDraft ?? location.workspaceRoot;
     const changed = draft.trim() !== "" && draft.trim() !== location.workspaceRoot;
-    return renderCollapsibleCard(workspaceLocationSectionID, "workspace-location-card",
-        renderIconTitle(state.labels.workspaceLocationTitle, "folder", undefined, "📁"), `
-      <div class="controls">
+    return `
         <div class="form-row">
           <span class="row-label">${escapeHTML(state.labels.workspaceLocationCurrentLabel)}</span>
           <code data-workspace-location-current>${escapeHTML(location.workspaceRoot)}</code>
@@ -35,8 +30,7 @@ export function renderWorkspaceLocationSection() {
             <span class="field-note">${escapeHTML(state.labels.workspaceLocationNote)}</span>
           </span>
         </label>
-        ${state.workspaceMove && !state.workspaceMove.setting ? renderWorkspaceMoveStatus() : ""}
-      </div>`);
+        ${state.workspaceMove && !state.workspaceMove.setting ? renderWorkspaceMoveStatus() : ""}`;
 }
 
 /** Bound folder controls can live on any page, including in Basic mode. */

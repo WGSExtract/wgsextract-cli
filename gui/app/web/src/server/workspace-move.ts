@@ -241,7 +241,7 @@ async function assertMovableSettingFolder(from: string, protectedPaths: string[]
     const resolvedFrom = await existingRealPath(from);
     for (const protectedPath of protectedPaths) {
         if (isSameOrInsidePath(from, protectedPath) || isSameOrInsidePath(resolvedFrom, await existingRealPath(protectedPath))) {
-            throw new HttpError(400, `Cannot move ${from}: it contains the workspace, bundle source or settings file ${protectedPath}. Move the users workspace from Users Workspace Location instead.`);
+            throw new HttpError(400, `Cannot move ${from}: it contains the workspace, bundle source or settings file ${protectedPath}. Move the users workspace with Change {{usersWorkspace}} under Users Workspace Settings instead.`);
         }
     }
 }

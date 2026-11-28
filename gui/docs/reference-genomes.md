@@ -41,6 +41,14 @@ Each genome has one of four statuses:
 | **Incomplete** | A previous download was interrupted and can be resumed or deleted. |
 | **Missing** | Not installed locally yet; available to download from the catalog. |
 
+## Sorting and filtering the table
+
+Click a column heading to sort the table by it: the first click sorts
+ascending (▲) and each further click reverses the order (▼). Sizes sort by
+their actual size, and empty cells stay at the bottom. Type in **Filter by
+keyword** to show only matching rows. **Default Sort**, beside the filter,
+clears the column sort and restores the original order.
+
 ## Row actions
 
 The icon buttons on each row adapt to that genome's status:

@@ -395,8 +395,12 @@ test("WGSExtract exposes My Genomes and reference genome library controls in Typ
   assert.equal(callAction.command.executable, "{{bundleRoot}}/scripts/run-wgsextract.sh");
   assert.deepEqual(callAction.command.arguments.slice(0, 3), ["vcf", "call", "--input"]);
   assert.equal(callAction.estimatedDurationMinutes, 68);
-  const defaultVcfPath = settings.settings.find((setting) => setting.id === "vcf_path");
-  assert.equal(defaultVcfPath.defaultDirectory, "{{mygenomes_library}}");
+  // Per-command inputs are chosen on each command's page, and Haplogrep ships with the CLI.
+  for (const removed of ["ref_fasta", "vcf_path", "mother_vcf_path", "father_vcf_path", "haplogrep_path"]) {
+    assert.equal(settings.settings.some((setting) => setting.id === removed), false, removed);
+  }
+  const outputDirectory = settings.settings.find((setting) => setting.id === "out_dir");
+  assert.equal(outputDirectory.placeholder, "{{inputs}}/WGSEv6");
   const microarrayAction = bundle.manifest.pages
     .find((page) => page.id === "microarray")
     .sections.find((section) => section.id === "microarray-formats")
