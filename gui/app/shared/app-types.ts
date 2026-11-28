@@ -133,9 +133,11 @@ export interface ManifestResponse {
     localizationOptions: LocalizedOption[];
     usingSystemDefaultLocale?: boolean;
     bundleState?: BundleStateSnapshot | null;
-    /** The app-wide Privacy mode setting (settings.json), not a bundle's saved state. */
+    /** The app-wide network settings (settings.json), not a bundle's saved state. */
     networkSettings: import("./network-settings.js").NetworkSettings;
     appVersion?: string;
+    /** A development run: `appVersion` is the latest release's, and the run always counts as out of date. */
+    appVersionDev?: boolean;
     workspaceLocation?: WorkspaceLocationInfo;
     workspaceMoveRevision?: string;
     bundleRootPath: string;
@@ -257,7 +259,7 @@ export interface WebUIState {
     colorTheme: string;
     webUIFont: string;
     uiMode: UIMode;
-    /** Stops the app's automatic network activity: no update check at startup. */
+    /** Network mode Off stops all network activity, including the update check at startup. */
     networkSettings: import("./network-settings.js").NetworkSettings;
     bundleRootPath: string;
     usersWorkspacePath: string;
@@ -265,12 +267,11 @@ export interface WebUIState {
     lastResultDocumentPaths: LastResultDocumentPaths;
     sourceRootPath: string;
     appVersion: string;
+    appVersionDev: boolean;
     workspaceLocation: WorkspaceLocationInfo | null;
     workspaceLocationDraft: string | null;
     /** A move of the users workspace (`folder` null for its default location) or, with `setting`, of one setting's folder. */
     workspaceMove: { folder: string | null; setting?: { controlID: string; key: string; from: string } | undefined; running: boolean; percent: number } | null;
-    /** Collapsible sections the user opened (all start closed). */
-    openSections: Set<string>;
     activePageID: string;
     fieldValues: ValueMap;
     checkedOptions: Record<string, Set<string>>;

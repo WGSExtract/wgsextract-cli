@@ -493,8 +493,8 @@ to a server. Ask separately and disclose the data and destination before
 the request.
 
 The desktop app handles the prompts and passes the appropriate CLI flags.
-Keep startup requests behind the first-launch choice and the relevant
-**Settings → Network & Privacy** controls. After that choice, distinguish
+Keep startup requests behind the first-launch choice and the **Network
+mode** and **Allow check for updates** settings (**Settings → Setup**). After that choice, distinguish
 automatic activity from actions the user explicitly requests. When adding
 a network path, test that the default does not try DNS or connect, and
 that an allowed request only sends the disclosed data. See the [CLI

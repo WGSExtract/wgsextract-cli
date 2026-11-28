@@ -7,8 +7,9 @@ import { state } from "./state.js";
 export { renderActionRows, renderActions, renderPrecheckBanner } from "./view/actions.js";
 import { renderActionRows, renderActions } from "./view/actions.js";
 export { renderSetupStatusSection, renderStandardOptionsAccessory } from "./view/settings.js";
-import { renderNetworkSettings, renderSetupStatusSection, renderStandardOptionsAccessory } from "./view/settings.js";
-import { renderSettingFolderMoveDialog, renderWorkspaceLocationSection } from "./view/workspace-location.js";
+import { renderSetupStatusSection, renderStandardOptionsAccessory } from "./view/settings.js";
+import { renderSettingFolderMoveDialog, renderWorkspaceLocationRows } from "./view/workspace-location.js";
+import { renderAppVersion } from "./view/app-version.js";
 export { renderSetupGlobalStatusBar, renderSetupPromptDialog, setupHasNeverRun, setupNeedsAttention, setupPageID, setupPromptMessage, } from "./view/setup.js";
 import { renderUpdateNavigationItem } from "./view/update.js";
 import { actionTitledForUIMode, basicCommandPrefixes, commandRunBy, isShownInUIMode, visibleActions, visibleControls, visibleOptions, visiblePages, visibleRows, visibleSections, type UIMode } from "../../../shared/ui-mode.js";
@@ -25,24 +26,22 @@ export function renderBundleHeader() {
     const icon = iconPath
         ? `<img class="bundle-icon" src="${iconPath}" alt="">`
         : `<div class="bundle-emoji" aria-hidden="true">${renderIcon(manifest.iconName, manifest.textIcon, "🧰")}</div>`;
-    const appVersion = String(state.appVersion ?? "").trim();
-    const appVersionLabel = state.labels.setupVersionLabel ?? "Version";
     return `
     <header class="bundle-header">
       ${icon}
       <h1>${escapeHTML(manifest.displayName)}${renderTooltip(manifest.summary)}</h1>
-      ${appVersion ? `<p class="app-version" data-app-version>${escapeHTML(appVersionLabel)} ${escapeHTML(appVersion)}</p>` : ""}
-      ${renderPrivacyModeBadge()}
+      ${renderAppVersion()}
+      ${renderNetworkOffBadge()}
     </header>
   `;
 }
-/** A red badge, shown while Privacy mode is on, so the user knows the app won't check for updates. */
-function renderPrivacyModeBadge() {
-    if (!state.networkSettings.privacyMode) {
+/** A red badge, shown while Network mode is Off, so the user knows the app makes no network requests. */
+function renderNetworkOffBadge() {
+    if (state.networkSettings.consent === "pending" || state.networkSettings.mode !== "off") {
         return "";
     }
-    const tooltip = state.labels.privacyModeBadgeTooltip ?? "";
-    return `<p class="privacy-mode-badge" data-privacy-mode-badge role="status" title="${escapeAttribute(tooltip)}">${escapeHTML(state.labels.privacyModeBadgeTitle ?? "PRIVACY")}</p>`;
+    const tooltip = state.labels.networkOffBadgeTooltip ?? "";
+    return `<p class="network-off-badge" data-network-off-badge role="status" title="${escapeAttribute(tooltip)}">${escapeHTML(state.labels.networkOffBadgeTitle ?? "NETWORK OFF")}</p>`;
 }
 /** The Basic / Advanced switch at the top of the sidebar: a radio group, so exactly one mode is on. */
 export function renderUIModeSwitch() {
@@ -132,7 +131,7 @@ export function renderPage(page: BundlePage) {
         <h2>${renderIconTitle(page.title, page.iconName, page.textIcon, "📄")}</h2>
         <p>${escapeHTML(page.summary)}</p>
       </header>
-      ${page.id === "settings" ? `${renderNetworkSettings()}${renderSetupStatusSection()}${renderStandardOptionsAccessory()}` : ""}
+      ${page.id === "settings" ? `${renderSetupStatusSection()}${renderStandardOptionsAccessory()}` : ""}
       <div class="sections">
         ${renderSections(page)}
       </div>
@@ -161,8 +160,6 @@ export function isSectionExpanded(page: BundlePage, section: PageSection): boole
 function renderSections(page: BundlePage): string {
     let parentCollapsed = false;
     const sections = visibleSections(page, state.uiMode);
-    const location = page.id === "settings" && state.uiMode === "advanced" ? renderWorkspaceLocationSection() : "";
-    const editorIndex = sections.findIndex((section) => (section.controls ?? []).some((control) => control.kind === "configEditor"));
     const rendered = sections
         .map((section) => {
             if (section.subsection === true) {
@@ -171,7 +168,6 @@ function renderSections(page: BundlePage): string {
             parentCollapsed = !isSectionExpanded(page, section);
             return renderSection(section, page);
         });
-    rendered.splice(editorIndex < 0 ? rendered.length : editorIndex, 0, location);
     return rendered.join("");
 }
 function renderSectionToggle(page: BundlePage, section: PageSection, expanded: boolean): string {
@@ -230,12 +226,16 @@ export function renderSection(section: PageSection, page: BundlePage) {
     }
     const sectionActions = visibleActions(section.actions, state.uiMode);
     const controls = visibleControls(section, state.uiMode);
+    // The users workspace heads the section that edits its settings file.
+    const workspaceRows = page.id === "settings" && controls.some((control) => control.kind === "configEditor")
+        ? renderWorkspaceLocationRows() : "";
     // Empty header and controls blocks would still add their margins: a blank band above the first row.
     return `
     <section class="${sectionClass}" id="section-body-${escapeAttribute(section.id)}" aria-labelledby="section-${escapeAttribute(section.id)}">
       ${header}
       ${controls.length
         ? `<div class="controls">
+        ${workspaceRows}
         ${renderControls(controls, context, location)}
       </div>`
         : ""}

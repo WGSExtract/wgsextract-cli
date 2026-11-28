@@ -9,6 +9,7 @@ import { createDevReload } from "./dev-reload.js";
 import { createJobServer } from "./job-server.js";
 import { createShutdownController } from "./lifecycle.js";
 import { parseArgs } from "./paths.js";
+import { appVersion } from "./app-version.js";
 import { takeNativePickerEndpoint } from "./path-picker.js";
 import { createProcessManager } from "./process-runner.js";
 import { takeApiToken } from "./request-guard.js";
@@ -43,7 +44,7 @@ const sourceBundleRoot = path.resolve(args.bundle ?? path.join(repoRoot, "exampl
 const port = Number(args.port ?? process.env.PORT ?? 8787);
 const host = args.host ?? "127.0.0.1";
 const defaultLocale = args.locale;
-const appVersion = process.env.WGSEXTRACT_GUI_APPLICATION_VERSION?.trim() || "";
+const version = appVersion(process.env, repoRoot);
 const enableDevReload = process.env.WEBUI_DEV_RELOAD === "1";
 const launcherProvidedToken = Boolean(process.env.GFC_API_TOKEN);
 const apiToken = takeApiToken();
@@ -83,7 +84,8 @@ const requestContext: RequestHandlerContext = {
     addDevReloadClient: devReload.addClient,
     apiToken,
     apiTokenInjectedByLauncher: launcherProvidedToken,
-    appVersion,
+    appVersion: version.version,
+    appVersionDev: version.dev,
     ...bundleRuntime,
     ...(defaultLocale != null ? { defaultLocale } : {}),
     distRoot,

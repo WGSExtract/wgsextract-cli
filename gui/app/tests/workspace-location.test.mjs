@@ -571,16 +571,16 @@ test("app settings writers keep each other's changes, and an unreadable settings
   const kept = (await readdir(folder)).filter((name) => name.startsWith("settings.json.unreadable-"));
   assert.equal(kept.length, 1);
   assert.equal(await readFile(path.join(folder, kept[0]), "utf8"), "{ not json");
-  await saveNetworkSettings({ privacyMode: true });
-  assert.equal((await readNetworkSettings()).privacyMode, true);
+  await saveNetworkSettings({ mode: "off" });
+  assert.equal((await readNetworkSettings()).mode, "off");
 
-  // Concurrent writers (a bundle load recording its users workspace while Privacy mode is toggled) lose nothing.
+  // Concurrent writers (a bundle load recording its users workspace while Network mode changes) lose nothing.
   await Promise.all([
-    saveNetworkSettings({ privacyMode: false }),
+    saveNetworkSettings({ mode: "full" }),
     ...Array.from({ length: 5 }, (_, index) => updateAppSettings((current) => ({ ...current, [`writer${index}`]: index }))),
   ]);
   const saved = JSON.parse(await readFile(appSettingsPath(), "utf8"));
-  assert.equal(saved.privacyMode, false);
+  assert.equal(saved.networkMode, "full");
   assert.equal(saved.networkConsent, "deferred");
   for (let index = 0; index < 5; index++) {
     assert.equal(saved[`writer${index}`], index);

@@ -34,8 +34,8 @@ workspace settings:
   checkboxes, and fields across pages — for example, aligner index choice on
   [Reference Genomes](reference-genomes.md), VEP cache mirror/version overrides
   and custom URL downloads on [Reference Data](reference-data.md), and the
-  **Users Workspace Location** and **Users Workspace Settings (`config.toml`)**
-  editors on [Settings](settings.md).
+  **Output Directory** setting under **Users Workspace Settings** on
+  [Settings](settings.md).
 - **Output Directory override:** Only Advanced mode lets you set a custom
   **Output Directory** override in the GUI. Switching back to Basic mode hides
   and ignores that GUI override without erasing it. (Note: if you save an

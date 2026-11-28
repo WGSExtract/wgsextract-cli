@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -213,18 +213,20 @@ test("#1591 first launch makes no outbound requests until OK, then starts setup 
     ]);
     assert.equal(setup.status(), 200);
     // This test checks that setup starts. Teardown aborts and drains the stream.
-    assert.equal(await page.getByRole("checkbox", { name: "Check for updates at launch" }).isChecked(), true);
+    assert.equal(await page.getByRole("combobox", { name: /^Network mode/ }).inputValue(), "automatic");
+    assert.equal(await page.getByRole("checkbox", { name: "Allow check for updates" }).isChecked(), true);
     assert.deepEqual(external, []);
 });
 
-test("#1591 Not now opens Settings offline and saves an independent launch preference", browserTestOptions, async (t) => {
+test("#1591 Not now opens Settings offline, turns off update checks, and the checkbox turns them back on", browserTestOptions, async (t) => {
     const { page, external, setupCalls, updates, startupUpdate } = await browserFixture(t);
     await page.getByRole("button", { name: "Not now" }).click();
-    const section = page.getByRole("region", { name: "Network & Privacy" });
-    await section.waitFor();
-    assert.equal(await section.evaluate((element) => document.activeElement === element), true);
-    const checkbox = section.getByRole("checkbox", { name: "Check for updates at launch" });
-    assert.equal(await checkbox.isChecked(), false);
+    const mode = page.getByRole("combobox", { name: /^Network mode/ });
+    await mode.waitFor();
+    assert.equal(await mode.evaluate((element) => document.activeElement === element), true);
+    assert.equal(await mode.inputValue(), "automatic");
+    const allow = page.getByRole("checkbox", { name: "Allow check for updates" });
+    assert.equal(await allow.isChecked(), false);
     await page.getByRole("button", { name: "Home" }).click();
     await page.getByText("Available offline.").waitFor();
     assert.deepEqual({ external, setupCalls, updates: await updates() }, { external: [], setupCalls: [], updates: [] });
@@ -232,18 +234,22 @@ test("#1591 Not now opens Settings offline and saves an independent launch prefe
     await page.waitForFunction(() => window.updateRequests.includes("gfc_update_check_from_menu"));
     assert.deepEqual(await updates(), ["gfc_update_check_from_menu"]);
 
+    // Running setup yourself leaves update checks off until you allow them.
     await page.reload();
     await page.waitForLoadState("networkidle");
     await page.getByRole("button", { name: "Settings" }).click();
-    assert.equal(await checkbox.isChecked(), false);
+    const [setup] = await Promise.all([
+        page.waitForResponse((response) => response.url().endsWith("/api/setup/stream")),
+        page.getByRole("button", { name: "Run Setup", exact: true }).click(),
+    ]);
+    assert.equal(setup.status(), 200);
     assert.deepEqual(await updates(), []);
     const save = page.waitForResponse((response) => response.url().endsWith("/api/network-settings") && response.request().method() === "POST");
-    await checkbox.check();
+    await allow.check();
     assert.equal((await save).status(), 200);
     await page.reload();
-    await checkbox.waitFor();
     await startupUpdate();
-    assert.deepEqual(setupCalls, []);
+    assert.deepEqual(external, []);
 });
 
 test("#1591 Not now does not start networking when another window already saved OK", browserTestOptions, async (t) => {
@@ -260,10 +266,25 @@ test("#1591 Not now does not start networking when another window already saved 
     });
     assert.equal(saved.ok(), true);
     await page.getByRole("button", { name: "Not now" }).click();
-    await page.getByRole("region", { name: "Network & Privacy" }).waitFor();
-    const localized = page.waitForResponse((response) => response.url().endsWith("/api/manifest?locale=en"));
-    await page.locator("[data-locale-picker]").selectOption("en");
-    assert.equal((await localized).status(), 200);
+    await page.getByRole("combobox", { name: /^Network mode/ }).waitFor();
+    // The Setup card above can still change height as the page settles, moving the toggle under the click.
+    const picker = page.locator("[data-locale-picker]");
+    for (let attempt = 0; attempt < 5 && !(await picker.isVisible()); attempt++) {
+        await page.waitForLoadState("networkidle");
+        if (await page.getByRole("button", { name: "Expand Section: Standard UI Options" }).isVisible()) {
+            await page.getByRole("button", { name: "Expand Section: Standard UI Options" }).click();
+        }
+        await picker.waitFor({ timeout: 1_000 }).catch(() => {});
+    }
+    // A connection-cost refresh can re-render the page between choosing and its change event; send it again then.
+    let localized;
+    for (let attempt = 0; attempt < 3 && !localized; attempt++) {
+        const response = page.waitForResponse((candidate) => candidate.url().endsWith("/api/manifest?locale=en"), { timeout: 2_000 }).catch(() => undefined);
+        if (attempt === 0) await picker.selectOption("en");
+        else await picker.dispatchEvent("change");
+        localized = await response;
+    }
+    assert.equal(localized?.status(), 200);
     await page.waitForLoadState("networkidle");
     assert.deepEqual({ external, setupCalls, updates: await updates() }, { external: [], setupCalls: [], updates: [] });
 });
@@ -275,24 +296,39 @@ test("#1591 a completed installation's previous effective startup preference sur
     await mkdir(path.dirname(file), { recursive: true });
     await writeFile(file, JSON.stringify({ privacyMode: true }));
     await migrateNetworkSettingsAfterCompletedSetup();
-    assert.deepEqual(await readNetworkSettings(), { consent: "accepted", privacyMode: true, checkForUpdatesAtLaunch: false, mode: "automatic", detectedCost: "unknown" });
+    assert.deepEqual(await readNetworkSettings(), { consent: "accepted", allowUpdateChecks: false, mode: "automatic", detectedCost: "unknown" });
+    assert.equal("privacyMode" in JSON.parse(await readFile(file, "utf8")), false);
     await writeFile(file, "{}");
     await migrateNetworkSettingsAfterCompletedSetup();
-    assert.equal((await readNetworkSettings()).checkForUpdatesAtLaunch, true);
+    assert.equal((await readNetworkSettings()).allowUpdateChecks, true);
     await writeFile(file, JSON.stringify({ networkConsent: "deferred" }));
     await migrateNetworkSettingsAfterCompletedSetup();
     assert.equal((await readNetworkSettings()).consent, "deferred");
+});
+
+test("v0.9.0's launch-check setting carries over as Allow check for updates, and Privacy mode reads as unchecked", async (t) => {
+    t.mock.method(systemNetworkCost, "detect", async () => "unknown");
+    await isolatedRoot(t);
+    const file = appSettingsPath();
+    await mkdir(path.dirname(file), { recursive: true });
+    for (const [saved, allowed] of [[{ checkForUpdatesAtLaunch: true }, true], [{ checkForUpdatesAtLaunch: false }, false], [{ checkForUpdatesAtLaunch: true, privacyMode: true }, false]]) {
+        await writeFile(file, JSON.stringify({ networkConsent: "accepted", ...saved }));
+        assert.equal((await readNetworkSettings()).allowUpdateChecks, allowed, JSON.stringify(saved));
+        await saveNetworkSettings({ mode: "low" });
+        const written = JSON.parse(await readFile(file, "utf8"));
+        assert.deepEqual([written.checkForUpdatesAtLaunch, written.networkMode, "privacyMode" in written], [allowed, "low", false]);
+    }
+    await saveNetworkSettings({ allowUpdateChecks: true });
+    assert.equal((await readNetworkSettings()).allowUpdateChecks, true);
 });
 
 test("#1591 metered first launch defers setup, reports Low in Settings, and runs the CLI in Low", browserTestOptions, async (t) => {
     const { page, external, setupCalls, startupUpdate } = await browserFixture(t, { cost: "constrained", cli: true });
     await page.getByRole("button", { name: "OK", exact: true }).click();
     await startupUpdate();
-    const settings = page.getByRole("region", { name: "Network & Privacy" });
-    const mode = settings.getByRole("combobox", { name: "Network mode" });
-    const status = settings.getByRole("status");
+    await page.locator("[data-network-settings][data-effective-network-mode='low']").waitFor();
+    const mode = page.getByRole("combobox", { name: /^Network mode/ });
     assert.equal(await mode.inputValue(), "automatic");
-    assert.match(await status.textContent(), /Metered.*In use: Low/);
     assert.deepEqual({ external, setupCalls }, { external: [], setupCalls: [] });
 
     const run = await page.request.post(new URL("/api/run/stream", page.url()).href, {
@@ -308,9 +344,9 @@ test("#1591 metered first launch defers setup, reports Low in Settings, and runs
     const saved = page.waitForResponse((response) => response.url().endsWith("/api/network-settings") && response.request().method() === "POST");
     await mode.selectOption("off");
     assert.equal((await saved).status(), 200);
-    await status.filter({ hasText: /In use: Off/ }).waitFor();
+    await page.locator("[data-network-settings][data-effective-network-mode='off']").waitFor();
     assert.equal(await mode.inputValue(), "off");
-    assert.match(await status.textContent(), /Metered.*In use: Off/);
+    await page.getByRole("status").filter({ hasText: "NETWORK OFF" }).waitFor();
     const persisted = await page.request.get(new URL("/api/network-settings", page.url()).href, {
         headers: { "x-gfc-token": "browser-consent-test" },
     });
@@ -353,12 +389,13 @@ test("#1591 the lifecycle walkthrough confirms manual setup on an unknown-cost c
     await completeLifecycleSetup(page, prompt, operationTimeout);
 
     assert.equal(setupCalls.length, 1);
-    assert.equal(await page.locator(".setup-global-banner").count(), 0);
+    // The save lands before the final re-render; the banner must then go.
+    await page.locator(".setup-global-banner").waitFor({ state: "detached" });
 });
 
 test("#1591 unavailable OS detection leaves bulk startup transfers opt-in", async () => {
     const detectedCost = await createNetworkCostDetector("darwin", async () => "false false")();
-    const settings = { consent: "accepted", privacyMode: false, checkForUpdatesAtLaunch: true, mode: "automatic", detectedCost };
+    const settings = { consent: "accepted", allowUpdateChecks: true, mode: "automatic", detectedCost };
     assert.equal(effectiveNetworkMode(settings), "low");
     assert.equal(networkAllowed(settings, "startup-setup"), false);
     assert.equal(networkAllowed(settings, "startup-download"), false);

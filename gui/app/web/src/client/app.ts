@@ -9,6 +9,7 @@ import { captureFocus, restoreFocus } from "./focus-state.js";
 import { captureKeyedScrollStates, captureScrollState, restoreKeyedScrollStates, restoreScrollState, type ScrollSnapshot } from "./scroll-state.js";
 import { runSetup } from "./operations-setup.js";
 import { state } from "./state.js";
+import { displayedAppVersion } from "./view/app-version.js";
 import { initializeTauriUpdater } from "./tauri-updater.js";
 import { appendTerminal, discardPendingTerminalOutput, ensureMainTerminal, renderTerminalPane, terminalTabs } from "./terminal.js";
 import { applyUIModeTerminalVisibilityIfChanged } from "./terminal-visibility.js";
@@ -56,6 +57,7 @@ async function bootstrap(locale?: string) {
         applyUIModeTerminalVisibilityIfChanged();
         state.setupRun = bundle.bundleState?.setupRun ?? null;
         state.appVersion = bundle.appVersion ?? "";
+        state.appVersionDev = bundle.appVersionDev === true;
         state.workspaceLocation = bundle.workspaceLocation ?? null;
         state.exitCodeReference = new Map((bundle.manifest.exitCodeReference ?? []).map((entry) => [Number(entry.code), entry]));
         state.bundleRootPath = bundle.bundleRootPath;
@@ -113,9 +115,9 @@ function onNetworkChoice(acceptedHere: boolean) {
     state.activePageID = setupPageID();
     render();
     if (!acceptedHere) {
-        const section = app.querySelector<HTMLElement>("[data-network-settings]");
-        section?.focus();
-        section?.scrollIntoView({ block: "start" });
+        const picker = app.querySelector<HTMLElement>("[data-network-setting='mode']");
+        picker?.focus();
+        picker?.scrollIntoView({ block: "center" });
         return;
     }
     initializeTauriUpdater();
@@ -251,7 +253,7 @@ function updateDocumentMetadata() {
 function appWindowTitle() {
     const appName = "WGS Extract GUI";
     const bundleName = String(state.manifest?.displayName ?? "").trim();
-    const appVersion = String(state.appVersion ?? "").trim();
+    const appVersion = displayedAppVersion();
     const baseTitle = bundleName ? `${bundleName} - ${appName}` : appName;
     return appVersion ? `${baseTitle} ${appVersion}` : baseTitle;
 }

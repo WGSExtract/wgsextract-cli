@@ -6,7 +6,7 @@ import { evaluatePrecheck, evaluateSetupInstallSizePrecheck, fileStateValues, ru
 import { serveBundleFavicon, serveBundleFile } from "./assets.js";
 import { loadLocaleOptions } from "./bundle-loader.js";
 import { saveBundleState } from "./bundle-state.js";
-import { readNetworkSettings, requireNetworkChoice, saveNetworkSettings } from "./network-settings.js";
+import { acceptNetworkConsentForSetup, readNetworkSettings, requireNetworkChoice, saveNetworkSettings } from "./network-settings.js";
 import { effectiveNetworkMode, networkAllowed } from "../../../shared/network-settings.js";
 import { isBootstrapLibrary } from "./cli-network-policy.js";
 import { loadConfig, saveConfig } from "./config-store.js";
@@ -45,7 +45,7 @@ import { openGeneIobio } from "./gene-iobio.js";
 import { openSystemBrowser } from "./system-browser.js";
 import { genePagePrerequisites, installGenePagePrerequisite, openGenePage } from "./gene-page.js";
 
-type ManifestResponse = Record<string, unknown> & { appVersion?: string; autoRunSetup?: boolean };
+type ManifestResponse = Record<string, unknown> & { appVersion?: string; appVersionDev?: boolean; autoRunSetup?: boolean };
 
 const networkChoiceRoutes = new Set([
     "/api/bundle/load",
@@ -67,6 +67,8 @@ export interface RequestHandlerContext {
     /** True when a launcher (Tauri/Electron) injects the token into its own webview instead of index.html. */
     apiTokenInjectedByLauncher?: boolean;
     appVersion?: string;
+    /** A development run: its version is the latest release's, and it always counts as out of date. */
+    appVersionDev?: boolean;
     bundleRoot: string;
     defaultLocale?: string;
     distRoot: string;
@@ -521,7 +523,7 @@ async function handleGet(url: URL, request: IncomingMessage, response: ServerRes
         const loaded = await context.localizedBundleLoader.load(locale, preferredLocales(request.headers["accept-language"]));
         if (before !== await assertCurrentWorkspace(context)) throw new HttpError(409, "workspaceMoveStale");
         const body = {
-            ...withAutoRunSetup(withAppVersion(loaded, context.appVersion)),
+            ...withAutoRunSetup(withAppVersion(loaded, context.appVersion, context.appVersionDev)),
             networkSettings: await readNetworkSettings(),
             workspaceLocation: await usersWorkspaceLocationInfo(context.manifest, usersWorkspaceFor(context.bundleRoot)),
             workspaceMoveRevision: before,
@@ -582,10 +584,13 @@ async function handleStepStream(request: IncomingMessage, response: ServerRespon
     const checkSetupNetwork = async () => {
         const settings = await readNetworkSettings();
         if (!networkAllowed(settings, setupActivity) || (effectiveNetworkMode(settings) === "low" && !confirmed)) {
-            throw new HttpError(403, "Setup downloads are not allowed by Network & Privacy settings.");
+            throw new HttpError(403, "Setup downloads are not allowed by the Network mode setting.");
         }
     };
-    if (setup) await checkSetupNetwork();
+    if (setup) {
+        await checkSetupNetwork();
+        if (setupActivity === "external") await acceptNetworkConsentForSetup();
+    }
     const runProcess: RunProcess = setup ? async (executable, args, options) => {
         await checkSetupNetwork();
         return context.runProcess(executable, confirmed && isBootstrapLibrary(executable, args) ? [...args, "--allow-large-download"] : args, options);
@@ -598,9 +603,9 @@ async function handleStepStream(request: IncomingMessage, response: ServerRespon
     ), request);
 }
 
-function withAppVersion(bundle: ManifestResponse, appVersion: unknown): ManifestResponse {
+function withAppVersion(bundle: ManifestResponse, appVersion: unknown, dev = false): ManifestResponse {
     const version = String(appVersion ?? "").trim();
-    return version ? { ...bundle, appVersion: version } : bundle;
+    return version ? { ...bundle, appVersion: version, ...(dev ? { appVersionDev: true } : {}) } : bundle;
 }
 
 function withAutoRunSetup(bundle: ManifestResponse): ManifestResponse {

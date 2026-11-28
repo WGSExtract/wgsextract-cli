@@ -216,13 +216,93 @@ test("setup steps name their kind in words, never the manifest id", async () => 
       id: "demo", pages: [],
       setup: { steps: [...setupStepKinds, "futureKind"].map((kind) => ({ id: kind, kind, label: kind, value: "x" })) },
     };
-    const kinds = [...renderSetupStatusSection().matchAll(/class="setup-step-kind">([^<]*)</g)].map((match) => match[1]);
+    const [appUpdater, ...kinds] = [...renderSetupStatusSection().matchAll(/class="setup-step-kind">([^<]*)</g)].map((match) => match[1]);
+    assert.equal(appUpdater, state.labels.setupStepKindAppUpdateLabel, "the app's own update check comes first");
     assert.equal(kinds.length, setupStepKinds.length + 1);
     assert.equal(kinds.at(-1), "", "an unknown kind shows nothing");
     for (const [index, kind] of setupStepKinds.entries()) {
       assert.ok(kinds[index] && kinds[index] !== kind, `${locale}: ${kind} shows "${kinds[index]}"`);
     }
   }
+});
+
+test("setup's first step reports the app's own update check", async () => {
+  // Owner request: rerunning setup also shows whether the app itself needs an update.
+  const { state, renderSetupStatusSection } = await clientView();
+  state.labels = {};
+  state.manifest = { id: "demo", pages: [], setup: { steps: [{ id: "tool", kind: "pathTool", label: "Tool", value: "x" }] } };
+  state.networkSettings = { consent: "accepted", allowUpdateChecks: true, mode: "full", detectedCost: "unknown" };
+  const appRow = () => {
+    const html = renderSetupStatusSection();
+    const row = /<li class="setup-step (\w+)" data-setup-app-update>[\s\S]*?class="setup-step-label">([^<]*)</.exec(html);
+    assert.ok(row, "the app update row renders");
+    assert.ok(html.indexOf("data-setup-app-update") < html.indexOf(">Tool<"), "it is the first step");
+    return [row[1], row[2]];
+  };
+  Object.assign(state.update, { supported: false, checked: false, status: "idle" });
+  assert.deepEqual(appRow(), ["pending", "Unavailable"]);
+  Object.assign(state.update, { supported: true, status: "checking" });
+  assert.deepEqual(appRow(), ["running", "Running"]);
+  Object.assign(state.update, { checked: true, status: "none" });
+  assert.deepEqual(appRow(), ["ok", "OK"]);
+  Object.assign(state.update, { status: "available" });
+  assert.deepEqual(appRow(), ["warning", "Update available"]);
+  Object.assign(state.update, { status: "error" });
+  assert.deepEqual(appRow(), ["failed", "Failed"]);
+  state.networkSettings.allowUpdateChecks = false;
+  assert.deepEqual(appRow(), ["pending", "Off"]);
+  Object.assign(state.networkSettings, { allowUpdateChecks: true, mode: "off" });
+  assert.deepEqual(appRow(), ["pending", "Off"]);
+});
+
+test("Setup ends with Network mode and Allow check for updates, greyed out and unchecked while Off", async () => {
+  // Owner request: Network mode sits at the bottom of Setup, with a separate update-check checkbox.
+  const { state, renderSetupStatusSection } = await clientView();
+  state.labels = { networkMode: "Network mode" };
+  state.manifest = { id: "demo", pages: [], setup: { steps: [{ id: "tool", kind: "pathTool", label: "Tool", value: "x" }] } };
+  state.setupRun = { status: "ok", results: [] };
+  state.setupExpanded = false;
+  const checkbox = () => /<input type="checkbox" data-network-setting="allowUpdateChecks"[^>]*>/.exec(renderSetupStatusSection())?.[0] ?? "";
+  state.networkSettings = { consent: "accepted", allowUpdateChecks: true, mode: "low", detectedCost: "unknown" };
+  const html = renderSetupStatusSection();
+  assert.match(html, /id="network-mode-picker"/, "visible even with the steps collapsed");
+  assert.ok(html.indexOf("network-mode-picker") < html.indexOf("allowUpdateChecks"), "the checkbox is below Network mode");
+  assert.match(checkbox(), / checked/);
+  assert.doesNotMatch(checkbox(), /disabled/);
+  state.networkSettings.allowUpdateChecks = false;
+  assert.doesNotMatch(checkbox(), / checked/);
+  Object.assign(state.networkSettings, { allowUpdateChecks: true, mode: "off" });
+  assert.doesNotMatch(checkbox(), / checked/);
+  assert.match(checkbox(), /disabled/);
+});
+
+test("the app version turns red when out of date, and a development run always is", async () => {
+  // Owner request: an out-of-date version shows in red; Dev mode is out of date by definition.
+  const { state, renderBundleHeader } = await clientView();
+  state.labels = { setupVersionLabel: "Version", appVersionDevLabel: "Dev" };
+  state.manifest = { id: "demo", displayName: "Demo", pages: [] };
+  const version = () => /<p class="app-version([^"]*)"[^>]*>([^<]*)</.exec(renderBundleHeader())?.slice(1, 3);
+  Object.assign(state, { appVersion: "0.9.0", appVersionDev: false });
+  Object.assign(state.update, { status: "none" });
+  assert.deepEqual(version(), ["", "Version 0.9.0"]);
+  state.update.status = "available";
+  assert.deepEqual(version(), [" out-of-date", "Version 0.9.0"]);
+  Object.assign(state, { appVersionDev: true });
+  state.update.status = "none";
+  assert.deepEqual(version(), [" out-of-date", "Version 0.9.0 Dev"]);
+});
+
+test("Standard UI Options starts collapsed and opens with its toggle", async () => {
+  // Owner request: Standard UI Options is collapsible, collapsed by default.
+  const { state, renderStandardOptionsAccessory } = await clientView();
+  state.labels = { standardOptionsSectionTitle: "Standard UI Options", networkMode: "Network mode" };
+  const html = () => renderStandardOptionsAccessory();
+  assert.match(html(), /data-section-toggle="settings\/standard-ui-options" aria-expanded="false"/);
+  assert.doesNotMatch(html(), /data-locale-picker|data-icon-set-picker/);
+  state.toggledSections.add("settings/standard-ui-options");
+  assert.match(html(), /aria-expanded="true"/);
+  assert.match(html(), /data-icon-set-picker/);
+  assert.doesNotMatch(html(), /network-mode-picker/, "Network mode lives in Setup");
 });
 
 test("a long library table scrolls under a header row that stays in view", async () => {

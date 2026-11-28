@@ -174,9 +174,9 @@ renames the macOS archive to `<App>_<arch>.app.tar.gz` so the feed can tell
 architectures apart. Release publishing replaces spaces with dots in asset names.
 
 On a fresh install, the app only checks the configured endpoint after the
-user accepts the first-launch network defaults or enables **Check for updates
-at launch** in **Settings → Network & Privacy**. **Privacy mode** pauses launch
-checks. An available update shows in the sidebar; a failed startup check stays
+user accepts the first-launch network defaults or checks **Allow check for
+updates** under **Settings → Setup**. **Network mode** Off blocks launch checks.
+Rerunning setup also checks for an app update, as setup's first step. An available update shows in the sidebar; a failed startup check stays
 quiet. `GFC_TAURI_AUTO_UPDATE=0` disables launch checks for tests but
 `GFC_TAURI_AUTO_UPDATE=1` does not bypass consent. The app also includes a
 **Check for Updates...** menu item in the **File** menu. It checks the
