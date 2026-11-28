@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import subprocess
@@ -9,7 +10,7 @@ GUEST = Path(__file__).resolve().parents[1] / "scripts" / "installlab" / "guest"
 
 
 @pytest.mark.parametrize("platform", ["linux", "macos", "windows"])
-def test_1677_gui_actions_find_the_runtime_installed_by_packaged_setup(
+def test_1677_1688_gui_actions_use_the_installed_runtime_and_stage_ploidy_in_both_lanes(
     tmp_path: Path, platform: str
 ) -> None:
     windows = platform == "windows"
@@ -31,9 +32,18 @@ def test_1677_gui_actions_find_the_runtime_installed_by_packaged_setup(
     runner.write_text(
         'const fs = require("node:fs"), path = require("node:path");\n'
         'const name = process.env.WGSEXTRACT_GUI_APP_DATA_NAME ?? "WGSExtract-gui-dev";\n'
-        'process.stdout.write(fs.readFileSync(path.join(process.env.SUPPORT, name, "runtime", "cli"), "utf8"));\n',
+        'const cli = fs.readFileSync(path.join(process.env.SUPPORT, name, "runtime", "cli"), "utf8");\n'
+        "const args = process.argv.slice(2);\n"
+        'const workspaceFlag = args.includes("--users-workspace") ? "--users-workspace" : "--workspace";\n'
+        "const workspace = args[args.indexOf(workspaceFlag) + 1];\n"
+        'const ploidy = fs.readFileSync(path.join(workspace, "reference", "ploidy.txt"));\n'
+        'process.stdout.write(JSON.stringify([cli, ploidy.toString("hex")]));\n',
         encoding="utf-8",
     )
+    guest = tmp_path / "guest"
+    (guest / "windows").mkdir(parents=True)
+    fixture = GUEST / "hg19-mini.ploidy.txt"
+    shutil.copyfile(fixture, guest / fixture.name)
     support = tmp_path / "app support"
     app_data = support / "WGSExtract-gui"
     (app_data / "runtime").mkdir(parents=True)
@@ -43,17 +53,23 @@ def test_1677_gui_actions_find_the_runtime_installed_by_packaged_setup(
         "SUPPORT": str(support),
         "APP_DATA": str(app_data),
         "APP": str(app),
+        "HERE": str(guest),
+        "APP_LIFECYCLE": str(GUEST / "app-lifecycle.sh"),
     }
     env.pop("WGSEXTRACT_GUI_APP_DATA_NAME", None)
+    env.pop("LAB_CLI_ARCHIVE_URL", None)
+    env.pop("LAB_ARCHIVE_URL", None)
     if windows:
         text = (GUEST / "windows/gui-scenario.ps1").read_text()
-        start = text.index("$NewWorkspace = ")
+        start = text.index("# everything a click would start is.")
         launch = text[start : text.index("# The oracle reads outputs", start)]
-        script = tmp_path / "run-actions.ps1"
+        script = guest / "windows/run-actions.ps1"
         script.write_text(
             '$ErrorActionPreference = "Stop"; $InstallDir = $env:APP; '
             '$AppData = $env:APP_DATA; $AppIdentifier = "legacy"; '
-            "$R = $UsersWorkspace = $OldWorkspace = $Workspace = $InstallDir; $UsersArgs = @(); "
+            "$R = $InstallDir; $UsersArgs = @(); "
+            "$Workspace = $UsersWorkspace = $env:USERS_WORKSPACE; $OldWorkspace = $env:OLD_WORKSPACE; "
+            "$lab = @{ LAB_CLI_ARCHIVE_URL = $env:LAB_CLI_ARCHIVE_URL }; "
             "function Step($name, $command, $cwd) { & $command[0] $command[1..($command.Length-1)] }\n"
             + launch
             + "\nexit $LASTEXITCODE\n",
@@ -73,19 +89,40 @@ def test_1677_gui_actions_find_the_runtime_installed_by_packaged_setup(
         command = [
             shell,
             "-c",
-            'APP_DIR="$APP"; WORKSPACE="$APP"; USERS_WORKSPACE="$APP"; '
-            'R="$APP"; APP_ID=legacy; BUNDLE_ID=legacy; unset LAB_ARCHIVE_URL LAB_CLI_ARCHIVE_URL\n'
-            + helpers
-            + "\n"
-            + launch
-            + "}\napp_actions",
+            'APP_DIR="$APP"; WORKSPACE="$USERS_WORKSPACE"; R="$APP"; APP_ID=legacy; BUNDLE_ID=legacy\n'
+            '. "$APP_LIFECYCLE"\n' + helpers + "\n" + launch + "}\napp_actions",
         ]
 
-    result = subprocess.run(
-        command, env=env, capture_output=True, text=True, timeout=15
-    )
-    assert result.returncode == 0, result.stderr
-    assert result.stdout == "installed CLI"
+    split_marker = app_data / "BundleWorkspaces/wgs-extract/.bundle-workspace"
+    split_marker.parent.mkdir(parents=True)
+    for lane, layout in (("pinned", "legacy"), ("pinned", "split"), ("tree", "split")):
+        workspace = tmp_path / f"{lane}-{layout}-users"
+        legacy = tmp_path / f"{lane}-{layout}-legacy"
+        if layout == "split":
+            split_marker.touch()
+        else:
+            legacy.mkdir()
+            (legacy / ".bundle-workspace").touch()
+        lane_env = {
+            **env,
+            "USERS_WORKSPACE": str(workspace),
+            "OLD_WORKSPACE": str(legacy),
+        }
+        if lane == "tree":
+            archive_var = (
+                "LAB_ARCHIVE_URL" if platform == "macos" else "LAB_CLI_ARCHIVE_URL"
+            )
+            lane_env[archive_var] = "https://example.invalid/tree-archive"
+        result = subprocess.run(
+            command, env=lane_env, capture_output=True, text=True, timeout=15
+        )
+        assert result.returncode == 0, f"{lane} {layout}: {result.stderr}"
+        assert json.loads(result.stdout) == [
+            "installed CLI",
+            fixture.read_bytes().hex(),
+        ]
+        if layout == "legacy":
+            assert not workspace.exists()
 
 
 @pytest.mark.parametrize("platform", ["linux", "macos", "windows"])

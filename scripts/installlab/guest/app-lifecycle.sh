@@ -13,7 +13,7 @@
 # process under the runtime folder, a running install included (#448).
 
 install_mini_genome_ploidy() {
-    # Staged only in the lab user's library for current-tree app tests.
+    # The rebased fixture cannot identify a full genome build on either CLI lane.
     mkdir -p "$1/reference" && cp "$2/hg19-mini.ploidy.txt" "$1/reference/ploidy.txt"
 }
 

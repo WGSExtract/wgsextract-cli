@@ -5,8 +5,8 @@
 "sidebar.groups.analyze" = "Analisar"  # i18n-source-hash:0e524de0
 "setup.xcode-command-line-tools.label" = "Verificar ou instalar as ferramentas de linha de comando do Xcode"  # i18n-source-hash:34f22c43
 "setup.pixi.label" = "Verificar se o Pixi está pré-instalado"  # i18n-source-hash:859a1264
-"setup.install-wgsextract.label" = "Instalar WGS Extract com Pixi"  # i18n-source-hash:ee8c1415
-"setup.install-wgsextract-windows.label" = "Instalar WGS Extract com Pixi e MSYS2"  # i18n-source-hash:46330af3
+"setup.install-wgsextract.label" = "Instalar ou atualizar a CLI do WGS Extract"  # i18n-source-hash:1ed47d25
+"setup.install-wgsextract-windows.label" = "Instalar ou atualizar a CLI do WGS Extract"  # i18n-source-hash:1ed47d25
 "setup.wgsextract.label" = "Verificar se a CLI do WGS Extract existe"  # i18n-source-hash:5ce8ecda
 "setup.deps-check.label" = "Verificar dependências do WGS Extract"  # i18n-source-hash:01ea1ed0
 "pages.workflow.title" = "Fluxo de trabalho"  # i18n-source-hash:d7a48414

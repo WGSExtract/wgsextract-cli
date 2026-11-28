@@ -10,6 +10,9 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 WINDOWS_INSTALLER = ROOT / "install_windows.bat"
+GUI_INSTALLER = (
+    ROOT / "gui/examples/WGSExtract/scripts/windows/setup-wgsextract-pixi.ps1"
+)
 SHELLS = [
     shell
     for name in ("powershell", "pwsh")
@@ -159,23 +162,34 @@ def test_windows_archive_module_mismatch_does_not_break_install(
         bundle.writestr("source/src/wgsextract_cli/__init__.py", "")
         bundle.writestr("source/folder with spaces/data.txt", "payload")
     app = tmp_path / "installed app"
+    temp_dir = tmp_path / "system temp"
+    temp_dir.mkdir()
+    env = _bootstrap_env(app, archive, temp_dir)
     if installer == "gui":
-        source = (
-            ROOT / "gui/examples/WGSExtract/scripts/windows/setup-wgsextract-pixi.ps1"
-        ).read_text()
-        functions = source.split("function Remove-DirectoryWithRetry", 1)[1]
-        functions = functions.split("# Pre-state snapshot", 1)[0]
+        # Run the real Setup script and stop at the dependency-install boundary.
+        install_dir = tmp_path / "runtime"
+        app = install_dir / "app"
+        pixi = tmp_path / "pixi.ps1"
+        pixi.write_text("exit 1\n")
+        env.update(
+            TEST_GUI_INSTALLER=str(GUI_INSTALLER),
+            WGSEXTRACT_INSTALL_DIR=str(install_dir),
+            WGSEXTRACT_GUI_BUNDLE_WORKSPACE=str(tmp_path / "bundle"),
+            WGSEXTRACT_MSYS2_ROOT=str(tmp_path / "no-msys2"),
+            WGSEXTRACT_PIXI_BASE_DIR=str(tmp_path / "pixi-data"),
+            LOCALAPPDATA=str(tmp_path / "local-data"),
+            PIXI_HOME=str(tmp_path / "pixi-home"),
+            PIXI=str(pixi),
+        )
         command = (
-            "function Remove-DirectoryWithRetry"
-            + functions
-            + "\nRestore-AppSource -Archive $env:TEST_ARCHIVE -AppDir $env:TEST_APP"
+            "function Invoke-FixtureInstaller { $global:LASTEXITCODE = 0 }\n"
+            "$env:ComSpec = 'Invoke-FixtureInstaller'\n"
+            "& $env:TEST_GUI_INSTALLER"
         )
     else:
         command = _bootstrap_command()
         app.mkdir()
         (app / "install_windows.bat").write_text("original bootstrap")
-    temp_dir = tmp_path / "system temp"
-    temp_dir.mkdir()
     script = tmp_path / "restore.ps1"
     script.write_text(
         "$ErrorActionPreference = 'Stop'\n"
@@ -185,11 +199,7 @@ def test_windows_archive_module_mismatch_does_not_break_install(
     )
     result = subprocess.run(
         [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)],
-        env={
-            **_bootstrap_env(app, archive, temp_dir),
-            "TEST_ARCHIVE": str(archive),
-            "TEST_APP": str(app),
-        },
+        env=env,
         capture_output=True,
         text=True,
         timeout=30,

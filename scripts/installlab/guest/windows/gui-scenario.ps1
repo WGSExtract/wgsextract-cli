@@ -317,12 +317,6 @@ foreach ($identifier in "dev.wgsextract-gui", $AppIdentifier) {
 # The real actions through the app's own runtime: its bundled Node and its
 # bundle-test runner, on its bundle and workspace. Clicking isn't simulated;
 # everything a click would start is.
-if ($lab.LAB_CLI_ARCHIVE_URL) {
-    $Reference = Join-Path $UsersWorkspace "reference"
-    New-Item -ItemType Directory -Force -Path $Reference | Out-Null
-    Copy-Item -LiteralPath (Join-Path (Split-Path $PSScriptRoot) "hg19-mini.ploidy.txt") `
-        -Destination (Join-Path $Reference "ploidy.txt")
-}
 $NewWorkspace = Join-Path $AppData "BundleWorkspaces\wgs-extract"
 if (-not (Test-Path -LiteralPath (Join-Path $UsersWorkspace ".bundle-workspace")) -and
     (Test-Path -LiteralPath (Join-Path $NewWorkspace ".bundle-workspace"))) {
@@ -332,6 +326,11 @@ if (-not (Test-Path -LiteralPath (Join-Path $UsersWorkspace ".bundle-workspace")
     (Test-Path -LiteralPath (Join-Path $OldWorkspace ".bundle-workspace"))) {
     $Workspace = $OldWorkspace
 }
+$ReferenceWorkspace = if ($UsersArgs.Count) { $UsersWorkspace } else { $Workspace }
+$Reference = Join-Path $ReferenceWorkspace "reference"
+New-Item -ItemType Directory -Force -Path $Reference | Out-Null
+Copy-Item -LiteralPath (Join-Path (Split-Path $PSScriptRoot) "hg19-mini.ploidy.txt") `
+    -Destination (Join-Path $Reference "ploidy.txt")
 $BundleRunner = Join-Path $InstallDir "app\dist\web\src\server\bundle-test-cli.js"
 # Released apps before the single-app layout use platform/typescript.
 if (-not (Test-Path -LiteralPath $BundleRunner)) {
