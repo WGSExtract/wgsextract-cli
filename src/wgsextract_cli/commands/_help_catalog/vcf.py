@@ -121,6 +121,10 @@ ENTRIES: dict[str, CommandHelp] = {
         _ANNOTATED.format(name="regulatory"),
         f"wgsextract vcf regulatory {_VCF_IN}",
     ),
+    "vcf gtex": _h(
+        "gtex_eqtl.tsv (one row per matched ALT, gene, tissue and credible set).",
+        f"wgsextract vcf gtex {_VCF_IN}",
+    ),
     "vcf phylop": _h(
         _SCORED.format(name="phylop"),
         f"wgsextract vcf phylop {_VCF_IN}",
@@ -162,6 +166,7 @@ ENTRIES: dict[str, CommandHelp] = {
     ),
     "vcf chain-annotate": _h(
         "chain_annotated.vcf.gz (+ index), chain_annotate.steps.json; "
+        "with gtex, chain_gtex_eqtl.tsv; "
         "with --to-table, chain_annotated_variants.tsv (or .parquet) and .sqlite.",
         f"wgsextract vcf chain-annotate {_VCF_IN} --annotations clinvar,gnomad "
         "--region chr22:19000000-20000000 --threads 4 --to-table",

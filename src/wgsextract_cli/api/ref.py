@@ -59,6 +59,9 @@ from ._ref_resources import (
     RefGnomadParams as RefGnomadParams,
 )
 from ._ref_resources import (
+    RefGtexParams as RefGtexParams,
+)
+from ._ref_resources import (
     RefPharmgkbParams as RefPharmgkbParams,
 )
 from ._ref_resources import (
@@ -360,6 +363,19 @@ def gnomad_sv(
     from wgsextract_cli.commands.ref.library_commands import run_gnomad_sv
 
     return execute(params, run_gnomad_sv, progress=progress, cancel=cancel, check=check)
+
+
+def gtex(
+    params: RefGtexParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Check or install the pinned GTEx track; output role ``gtex_track``."""
+    from wgsextract_cli.commands.ref.gtex import run_gtex
+
+    return execute(params, run_gtex, progress=progress, cancel=cancel, check=check)
 
 
 def regulatory(

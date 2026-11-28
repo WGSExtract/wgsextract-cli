@@ -23,6 +23,7 @@ from wgsextract_cli.api.ref import (
     RefGerpParams,
     RefGnomadParams,
     RefGnomadSvParams,
+    RefGtexParams,
     RefImputationParams,
     RefIndexParams,
     RefLibraryDeleteParams,
@@ -151,6 +152,11 @@ CERTIFICATION = {
     "ref regulatory": tested(
         _REVIEWED, "test_regulatory.py", "SCREEN track acquisition checked on fixtures."
     ),
+    "ref gtex": tested(
+        _REVIEWED,
+        "test_gtex.py",
+        "Pinned GTEx archive installation checked on fixtures.",
+    ),
     "ref clinvar": tested(
         _REVIEWED,
         "test_annotation_downloads.py",
@@ -248,6 +254,7 @@ NEEDS = {
     "ref gene-map": _n(DOWNLOAD, optional="bgzip curl tabix"),
     "ref cytobands": _n(DOWNLOAD, optional="curl"),
     "ref regulatory": _n(DOWNLOAD, optional="bgzip tabix curl"),
+    "ref gtex": _n(DOWNLOAD, optional="curl"),
     "ref clinvar": _n(DOWNLOAD, optional="bgzip curl tabix"),
     "ref dbsnp": _n(DOWNLOAD, optional="bgzip curl tabix"),
     "ref revel": _n(DOWNLOAD, optional="bgzip curl tabix"),
@@ -280,6 +287,7 @@ cmd_cytobands = command_handler(
 cmd_regulatory = command_handler(
     "wgsextract_cli.commands.ref.regulatory", "cmd_regulatory"
 )
+cmd_gtex = command_handler("wgsextract_cli.commands.ref.gtex", "cmd_gtex")
 cmd_dense_sa = command_handler("wgsextract_cli.commands.ref.dense_sa", "cmd_dense_sa")
 cmd_download = command_handler(
     "wgsextract_cli.commands.ref.core_commands", "cmd_download"
@@ -555,6 +563,7 @@ def register(
         cmd_regulatory,
         "Check, download or import the GRCh38 SCREEN cCRE track.",
     )
+    add("gtex", RefGtexParams, cmd_gtex, "Check or download the GTEx v10 eQTL track.")
     for cls, run in RESOURCE_COMMANDS:
         name = cls.COMMAND.removeprefix("ref ")
         add(name, cls, run, _RESOURCE_HELP[name])

@@ -54,4 +54,5 @@ spanning-deletion markers and gVCF reference blocks get no annotation.
 
 These are research annotations. Overlap does not establish a causal effect,
 a target gene, tissue-specific activity, a promoter impact score or ACMG
-evidence. GTEx eQTLs are not included.
+evidence. [GTEx eQTL annotation](gtex-annotation.md) is a separate opt-in
+track and writes its own TSV.

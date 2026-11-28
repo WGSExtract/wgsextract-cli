@@ -6,13 +6,8 @@ from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
 
-from wgsextract_cli.core.alignment.metadata import (
-    vcf_detection_header,
-    vcf_metadata_build_hint,
-)
-from wgsextract_cli.core.builds import build_from_path, is_hg38_build
-from wgsextract_cli.core.regulatory_data import primary_aliases
-from wgsextract_cli.core.utils import UsageError, WGSExtractError, popen, run_command
+from wgsextract_cli.core import vcf_build
+from wgsextract_cli.core.utils import WGSExtractError, popen, run_command
 from wgsextract_cli.core.variant_files import chromosome_aliases
 from wgsextract_cli.core.vcf_header import attributes
 
@@ -28,42 +23,7 @@ Interval = tuple[int, int, str, str]
 
 
 def require_grch38(vcf: str) -> None:
-    aliases = primary_aliases()
-    accessions = {alias.partition(".")[0] for alias in aliases if "." in alias}
-    confirmed = False
-    for line in vcf_detection_header(vcf).splitlines():
-        if line.startswith("##contig=<") and line.endswith(">"):
-            fields = attributes(line[10:-1])
-            name = fields.get("ID", "").strip('"')
-            key = name.upper()
-            chrom = aliases.get(key)
-            length = fields.get("length", "").strip('"')
-            if chrom and length.isdecimal():
-                if int(length) != chrom.length:
-                    raise _wrong_build(
-                        f"{name} has length {int(length):,}, expected {chrom.length:,}"
-                    )
-                confirmed |= chrom.name != "chrM"
-            if chrom and "." in key and chrom.name != "chrM":
-                confirmed = True
-            if not chrom and key.partition(".")[0] in accessions:
-                raise _wrong_build(f"incompatible primary accession {name}")
-            declared = build_from_path(fields.get("assembly", ""))
-        else:
-            declared = vcf_metadata_build_hint(line)
-        if declared:
-            if not is_hg38_build(declared):
-                raise _wrong_build(f"the header declares {declared}")
-            confirmed = True
-    if not confirmed:
-        raise _wrong_build("no build in the header")
-
-
-def _wrong_build(reason: str) -> UsageError:
-    return UsageError(
-        f"SCREEN cCRE annotation requires a GRCh38 VCF; {reason}. "
-        "No liftover is performed."
-    )
+    vcf_build.require_grch38(vcf, "SCREEN cCRE")
 
 
 def _changed_span(pos: int, ref: str, alt: str) -> tuple[int, int] | None:
@@ -158,7 +118,7 @@ def annotate_lines(
     available = set(
         run_command(["tabix", "-l", table], capture_output=True).stdout.splitlines()
     )
-    aliases = primary_aliases()
+    aliases = vcf_build.primary_grch38_aliases()
     primary = {
         aliases[name.upper()].name: name
         for name in sorted(available)

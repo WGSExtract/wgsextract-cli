@@ -92,6 +92,7 @@ from .vcf_specs.annotations import VcfChainAnnotateParams as VcfChainAnnotatePar
 from .vcf_specs.annotations import VcfClinvarParams as VcfClinvarParams
 from .vcf_specs.annotations import VcfGerpParams as VcfGerpParams
 from .vcf_specs.annotations import VcfGnomadParams as VcfGnomadParams
+from .vcf_specs.annotations import VcfGtexParams as VcfGtexParams
 from .vcf_specs.annotations import VcfPharmcatParams as VcfPharmcatParams
 from .vcf_specs.annotations import VcfPharmgkbParams as VcfPharmgkbParams
 from .vcf_specs.annotations import VcfPhylopParams as VcfPhylopParams
@@ -380,6 +381,19 @@ def alphamissense(
     )
 
 
+def gtex(
+    params: VcfGtexParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Write exact-ALT GTEx associations without changing the VCF."""
+    from wgsextract_cli.commands.vcf.gtex import run_gtex
+
+    return execute(params, run_gtex, progress=progress, cancel=cancel, check=check)
+
+
 def regulatory(
     params: VcfRegulatoryParams,
     *,
@@ -449,6 +463,7 @@ __all__ = [
     "VcfFilterParams",
     "VcfGerpParams",
     "VcfGnomadParams",
+    "VcfGtexParams",
     "VcfIndelParams",
     "VcfPharmcatParams",
     "VcfPharmgkbParams",
@@ -474,6 +489,7 @@ __all__ = [
     "filter",
     "gerp",
     "gnomad",
+    "gtex",
     "granite_qc",
     "indel",
     "info",

@@ -1,0 +1,46 @@
+from pathlib import Path
+
+from wgsextract_cli.api.vcf import VcfGtexParams
+from wgsextract_cli.core import gtex_data, gtex_matches, resource_releases
+from wgsextract_cli.core.atomic_output import atomic_output
+from wgsextract_cli.core.dependency_checks import verify_dependencies
+from wgsextract_cli.core.paths import same_path
+from wgsextract_cli.core.results import current_result
+from wgsextract_cli.core.utils import UsageError
+from wgsextract_cli.core.vcf_build import require_grch38
+
+from .annotation_helpers import annotation_context
+from .basic import vcf_input_handler
+
+GTEX_TSV = "gtex_eqtl.tsv"
+
+
+def protect_output(output: Path, *inputs: str | Path | None) -> None:
+    if any(path is not None and same_path(output, path) for path in inputs):
+        raise UsageError(
+            f"{output.name} would overwrite an input; choose another --outdir."
+        )
+
+
+def write_sidecar(input_file: str, table: Path, staged: Path) -> None:
+    with gtex_data.open_track(table, verify=True) as (db, source):
+        metrics = gtex_matches.write_matches(input_file, staged, db)
+    result = current_result()
+    result.set_details({"gtex_source": source})
+    result.add_metrics(**metrics)
+    result.add_input(table, "gtex_track")
+    resource_releases.record_pinned("gtex", gtex_data.BUILD, table)
+
+
+def run_gtex(params: VcfGtexParams) -> None:
+    verify_dependencies(["bcftools"])
+    input_file, outdir, lib = annotation_context(params, GTEX_TSV)
+    require_grch38(input_file, "GTEx")
+    table, output = gtex_data.path(lib.root), Path(outdir, GTEX_TSV)
+    protect_output(output, input_file, table)
+    with atomic_output(output, retire_indexes=False) as staged:
+        write_sidecar(input_file, table, Path(staged))
+    current_result().add_output(output, "gtex_eqtl_associations")
+
+
+cmd_gtex = vcf_input_handler(VcfGtexParams, run_gtex)

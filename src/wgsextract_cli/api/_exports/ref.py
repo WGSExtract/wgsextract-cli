@@ -50,6 +50,9 @@ from ..ref import (
     RefGnomadSvParams as RefGnomadSvParams,
 )
 from ..ref import (
+    RefGtexParams as RefGtexParams,
+)
+from ..ref import (
     RefImputationParams as RefImputationParams,
 )
 from ..ref import (
