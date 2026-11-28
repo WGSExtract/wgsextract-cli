@@ -77,6 +77,9 @@ export function applyDataSourcePayload(control: ControlSpec | LooseRecord, paylo
     if (payload.items) {
         next.items = payload.items;
     }
+    if (Array.isArray(payload.facts)) {
+        next.facts = payload.facts;
+    }
     const rowActions = payload.rowActions ?? payload.actions;
     if (rowActions) {
         next.rowActions = rowActions;

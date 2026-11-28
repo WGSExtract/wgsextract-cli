@@ -40,7 +40,7 @@ const depsList = {
                 license_acceptance_required: true, note: "Downloads the official dorado 2.2.0 release (~2.8 GB).",
                 license: { name: "Example Public License 2.0", terms: "research use only", url: "https://example.org/LICENCE" },
             }),
-            tool({ name: "sambamba", status: "unavailable", note: "sambamba isn't built for win32 AMD64." }),
+            tool({ name: "sambamba", status: "unavailable", note: "sambamba isn't available on Windows: only Linux uses it." }),
         ],
     },
 };
@@ -65,7 +65,7 @@ test("the Tools table offers Install, Uninstall or Not available as the CLI says
         sniffles: [["tool-uninstall", ""]],
         plink2: [["tool-manual", "Download PLINK 2 for your system."]],
         dorado: [["tool-install-licensed", ""]],
-        sambamba: [["tool-unavailable", "sambamba isn't built for win32 AMD64."]],
+        sambamba: [["tool-unavailable", "sambamba isn't available on Windows: only Linux uses it."]],
     });
 });
 
@@ -79,7 +79,7 @@ test("each Tools row shows its status, whether it is mandatory, and where it com
     assert.deepEqual(rows.gatk.tags.map((tag) => tag.title), ["optional"]);
     assert.equal(rows.samtools.values.details, "samtools 1.24");
     assert.equal(rows.fastp.values.environment, "default");
-    assert.equal(rows.sambamba.values.details, "sambamba isn't built for win32 AMD64.");
+    assert.equal(rows.sambamba.values.details, "sambamba isn't available on Windows: only Linux uses it.");
     // The uninstall confirmation names every tool the environment takes with it.
     assert.equal(rows.sniffles.values.environmentTools, "pbmm2, pbsv, sniffles");
     for (const row of Object.values(rows)) {
@@ -88,7 +88,49 @@ test("each Tools row shows its status, whether it is mandatory, and where it com
         assert.match(row.tooltip, /License: .+/, `${row.id} tooltip missing License`);
     }
     assert.match(rows.samtools.tooltip, /Installed path: \/env\/bin\/samtools/);
-    assert.match(rows.plink2.tooltip, /Note: Download PLINK 2 for your system\./);
+    // The note already shows in the row's details column, so the tooltip leaves it out.
+    assert.doesNotMatch(rows.plink2.tooltip, /Note:/);
+    assert.equal(rows.plink2.values.details, "Download PLINK 2 for your system.");
+});
+
+test("a missing mandatory or pre-installed tool isn't hidden with the installed ones", () => {
+    const tags = Object.fromEntries(items({ details: { tools: [
+        tool({ name: "samtools", group: "mandatory", status: "missing" }),
+        tool({ name: "bcftools", group: "mandatory", status: "installed", path: "/env/bin/bcftools" }),
+        tool({ name: "minimap2", status: "missing", preinstalled: true }),
+        tool({ name: "fastp", status: "installed", path: "/env/bin/fastp", preinstalled: true }),
+    ] } }).items.map((row) => [row.id, row.tags[0]]));
+
+    assert.deepEqual(Object.fromEntries(Object.entries(tags).map(([name, tag]) => [name, tag.id])), {
+        samtools: "mandatory-missing", bcftools: "mandatory", minimap2: "pre-installed-missing", fastp: "pre-installed",
+    });
+    assert.equal(tags.samtools.title, "mandatory");
+    assert.equal(tags.minimap2.title, "pre-installed");
+});
+
+test("Tools rows carry the commands that use each tool, and the page hides mandatory and pre-installed by default", () => {
+    const rows = items({ details: { tools: [tool({ name: "discvrseq", used_by: ["vcf variantqc"] }), tool({ name: "tar" })] } }).items;
+    assert.deepEqual(rows.map((row) => row.values.usedBy), ["vcf variantqc", ""]);
+    assert.equal(control.rowCommandsValue, "usedBy");
+    assert.equal(control.rowTemplate.values.usedBy, "{{usedBy}}");
+    assert.deepEqual(control.hideRows.tags, ["mandatory", "pre-installed"]);
+    assert.equal(control.hideRows.checked, true);
+});
+
+test("the Tools page shows the computer the CLI runs on, from deps list's host", () => {
+    const host = {
+        os: "Windows 11 (10.0.26300)", architecture: "x64", cpu_threads: 16, cpu_cores: 8,
+        memory_total: 64 * 1024 ** 3, memory_available: 40 * 1024 ** 3,
+        disks: [{ used_for: ["workspace", "temporary files"], free: 2.5 * 1024 ** 4, total: 4 * 1024 ** 4 }],
+    };
+    assert.deepEqual(items({ details: { tools: [], host } }).facts, [
+        { label: "Operating system", value: "Windows 11 (10.0.26300)" },
+        { label: "Architecture", value: "x64" },
+        { label: "CPU", value: "8 cores, 16 threads" },
+        { label: "Memory", value: "64.0 GiB total, 40.0 GiB available" },
+        { label: "Free disk", value: "2.50 TiB of 4.00 TiB (workspace, temporary files)" },
+    ]);
+    assert.deepEqual(items({ details: { tools: [] } }).facts, []);
 });
 
 test("a tool whose licence must be accepted installs only after a confirmation that names it", () => {

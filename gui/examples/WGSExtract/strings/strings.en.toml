@@ -1267,6 +1267,7 @@
 "pages.tools.summary" = "The mandatory and optional tools WGS Extract uses, whether each is installed, and installing or removing the optional ones."
 "sections.tools.tool-management.title" = "Mandatory and Optional Tools"
 "sections.tools.tool-management.summary" = "Filled by the dependency check (wgsextract deps list). Optional tools come in Pixi environments of their own: Install downloads one, Uninstall removes it."
+"controls.tools.tool-management.tools.hideRows.label" = "Hide mandatory and pre-installed"
 "controls.tools.tool-management.tools.label" = "Tools"
 "controls.tools.tool-management.tools.tooltip" = "Every tool the CLI checks for. Mandatory tools come with WGS Extract; reinstall it to repair one."
 "columns.tools.tool-management.tools.name.title" = "Tool"

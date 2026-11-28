@@ -53,6 +53,54 @@ export function visibleRows(rows: RowSpec[] | undefined, mode: UIMode): RowSpec[
     return (rows ?? []).filter((row) => isShownInUIMode(row, mode));
 }
 
+/** The leading words of a command an action runs; `open` when a placeholder there can name any subcommand. */
+export interface CommandPrefix {
+    words: string[];
+    open: boolean;
+}
+
+/** An action's command words: its arguments from the first word up to the first option or placeholder. */
+export function commandPrefix(args: readonly string[] = []): CommandPrefix {
+    const words: string[] = [];
+    for (const arg of args) {
+        if (arg.includes("{{")) {
+            return { words, open: true };
+        }
+        if (arg.startsWith("-")) {
+            if (words.length) {
+                break;
+            }
+            continue;
+        }
+        words.push(arg);
+    }
+    return { words, open: false };
+}
+
+/** The commands Basic mode's actions run, leaving out those of `except` (a list's own row actions). */
+export function basicCommandPrefixes(manifest: BundleManifest, except?: ControlSpec): CommandPrefix[] {
+    const actions: ActionSpec[] = [];
+    for (const page of visiblePages(manifest, "basic")) {
+        for (const section of visibleSections(page, "basic")) {
+            actions.push(...visibleActions(section.actions, "basic"));
+            for (const control of visibleControls(section, "basic")) {
+                actions.push(...visibleActions(control.actions, "basic"));
+                if (control !== except && control.id !== except?.id) {
+                    actions.push(...visibleActions(control.rowActions, "basic"));
+                }
+            }
+        }
+    }
+    return actions.map((action) => commandPrefix(action.command?.arguments)).filter((prefix) => prefix.words.length || prefix.open);
+}
+
+/** Whether command `path` ("vcf variantqc") is one some prefix runs. */
+export function commandRunBy(path: string, prefixes: readonly CommandPrefix[]): boolean {
+    const words = path.split(/\s+/).filter(Boolean);
+    const startsWith = (whole: string[], start: string[]) => start.every((word, index) => whole[index] === word);
+    return prefixes.some((prefix) => startsWith(prefix.words, words) || (prefix.open && startsWith(words, prefix.words)));
+}
+
 /**
  * What Basic mode hides that would otherwise change a command: controls hidden everywhere they appear, and hidden
  * options of checkbox groups that stay visible. Basic runs commands with those controls (other than paths) at their

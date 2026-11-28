@@ -10,8 +10,10 @@ from wgsextract_cli.api.deps import (
     DepsReadyParams,
     DepsUninstallParams,
 )
+from wgsextract_cli.commands._command_needs import tool_users
 from wgsextract_cli.core import optional_tools
 from wgsextract_cli.core.dependency_checks import check_all_dependencies
+from wgsextract_cli.core.issue_report.environment import host_details
 from wgsextract_cli.core.native_support import require_native_tool
 from wgsextract_cli.core.pixi_tools import pixi_install_command
 from wgsextract_cli.core.results import current_result, human_output
@@ -199,9 +201,13 @@ def _report() -> dict[str, list[dict[str, Any]]]:
         for group in ("mandatory", "optional")
         for tool in results[group]
     ] + [optional_tools.unavailable_row(tool) for tool in unavailable]
+    users = tool_users()
+    for row in tools:
+        row["used_by"] = users.get(str(row["name"]), [])
     current_result().set_details(
         {group: [_row(tool) for tool in results[group]] for group in results}
         | {"unavailable_on_platform": unavailable, "tools": tools}
+        | {"host": host_details()}
     )
 
     human_output("\nMandatory Tools:")

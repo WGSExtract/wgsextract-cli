@@ -10,6 +10,7 @@ import subprocess
 import sys
 from collections.abc import Iterable
 from pathlib import Path
+from types import ModuleType
 
 from wgsextract_cli import __version__
 
@@ -68,6 +69,12 @@ def _install_type() -> str:
 
 
 def _os_text() -> str:
+    return f"{os_name()}, {platform.machine()}"
+
+
+def os_name() -> str:
+    """The OS and its version: "Windows 11 (10.0.26300)", "macOS 15.4",
+    "Linux 6.8.0, Ubuntu 24.04.2 LTS"."""
     system = platform.system()
     if system == "Darwin":
         text = f"macOS {platform.mac_ver()[0]}"
@@ -83,7 +90,71 @@ def _os_text() -> str:
                     text += f", {line.split('=', 1)[1].strip(chr(34))}"
         except OSError:
             pass
-    return f"{text}, {platform.machine()}"
+    return text
+
+
+def host_details() -> dict[str, object]:
+    """This computer for `deps list`: OS, CPU architecture, cores, memory, and
+    free space where WGS Extract writes (one entry per disk). Empty if the
+    system won't say: `deps list` must not fail over it."""
+    import psutil
+
+    try:
+        return _host_details(psutil)
+    except (OSError, RuntimeError, ValueError, psutil.Error):
+        return {}
+
+
+def _host_details(psutil: ModuleType) -> dict[str, object]:
+    from wgsextract_cli.core.tool_catalog import host_architecture
+
+    memory = psutil.virtual_memory()
+    return {
+        "os": os_name(),
+        "architecture": host_architecture(),
+        "cpu_threads": psutil.cpu_count() or os.cpu_count() or 0,
+        "cpu_cores": psutil.cpu_count(logical=False),
+        "memory_total": memory.total,
+        "memory_available": memory.available,
+        "disks": _disks(),
+    }
+
+
+def _disks() -> list[dict[str, object]]:
+    import tempfile
+
+    from wgsextract_cli.core.config import mygenomes_library, settings
+    from wgsextract_cli.core.temp_directory import configured_temp_directory
+    from wgsextract_cli.core.users_workspace import users_workspace
+
+    places: dict[str, Path] = {"workspace": users_workspace()}
+    for key, label in (
+        ("reference_library", "reference library"),
+        ("reference_genome_library", "reference genomes"),
+        ("output_directory", "output folder"),
+    ):
+        if settings.get(key):
+            places[label] = Path(str(settings[key])).expanduser()
+    places["My Genomes"] = Path(mygenomes_library()).expanduser()
+    places["temporary files"] = Path(
+        configured_temp_directory() or tempfile.gettempdir()
+    )
+    used_for: dict[int, list[str]] = {}
+    usages: dict[int, tuple[int, int]] = {}
+    for label, target in places.items():
+        while not target.exists() and target != target.parent:
+            target = target.parent
+        try:
+            usage = shutil.disk_usage(target)
+            device = target.stat().st_dev
+        except OSError:
+            continue
+        used_for.setdefault(device, []).append(label)
+        usages[device] = (usage.free, usage.total)
+    return [
+        {"used_for": labels, "free": usages[device][0], "total": usages[device][1]}
+        for device, labels in used_for.items()
+    ]
 
 
 def environment_lines() -> list[str]:

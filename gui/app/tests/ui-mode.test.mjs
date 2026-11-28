@@ -5,7 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { commandContextFromState, placeholdersIn } from "../dist/shared/rendering.js";
 import { localizeManifest, parseTomlStrings } from "../dist/shared/localization.js";
-import { actionTitledForUIMode, basicModeHiddenInputs, visibleActions, visibleControls, visibleOptions, visiblePages, visibleSections } from "../dist/shared/ui-mode.js";
+import { actionTitledForUIMode, basicCommandPrefixes, basicModeHiddenInputs, commandPrefix, commandRunBy, visibleActions, visibleControls, visibleOptions, visiblePages, visibleSections } from "../dist/shared/ui-mode.js";
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const wgsExtract = path.resolve(appRoot, "..", "examples", "WGSExtract");
@@ -44,6 +44,29 @@ const sample = {
     { id: "emptied", title: "Emptied", sections: [{ id: "s", actions: [{ id: "a", advancedOnly: true, command: { executable: "tool" } }] }] },
   ],
 };
+
+test("an action's command words run from its first word to its first option, or stay open at a placeholder", () => {
+  assert.deepEqual(commandPrefix(["--json", "deps", "list"]), { words: ["deps", "list"], open: false });
+  assert.deepEqual(commandPrefix(["vcf", "variantqc", "--vcf", "{{input}}"]), { words: ["vcf", "variantqc"], open: false });
+  assert.deepEqual(commandPrefix(["vcf", "{{caller}}", "--ref"]), { words: ["vcf"], open: true });
+
+  const prefixes = [commandPrefix(["vcf", "variantqc", "--vcf", "x"]), commandPrefix(["typing", "{{kind}}"])];
+  assert.ok(commandRunBy("vcf variantqc", prefixes));
+  assert.ok(commandRunBy("vcf", prefixes));
+  assert.ok(commandRunBy("typing cyp2d6", prefixes));
+  assert.ok(!commandRunBy("vcf phase", prefixes));
+});
+
+test("WGS Extract's Basic mode runs VariantQC but not DeepVariant, and the Tools list's own buttons don't count", () => {
+  const manifest = wgsExtractManifest();
+  const tools = manifest.pages.find((page) => page.id === "tools").sections[0].controls[0];
+  const prefixes = basicCommandPrefixes(manifest, tools);
+
+  assert.ok(commandRunBy("vcf variantqc", prefixes));
+  assert.ok(!commandRunBy("vcf deepvariant", prefixes));
+  assert.ok(!commandRunBy("deps install", prefixes));
+  assert.ok(commandRunBy("deps install", basicCommandPrefixes(manifest)));
+});
 
 test("Basic hides advancedOnly pages, sections, controls and options, and pages or sections it leaves empty", () => {
   assert.deepEqual(visiblePages(sample, "basic").map((page) => page.id), ["common"]);

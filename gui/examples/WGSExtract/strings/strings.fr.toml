@@ -1271,6 +1271,7 @@
 "pages.tools.summary" = "Les outils obligatoires et optionnels qu’utilise WGS Extract, s’ils sont installés, et l’installation ou la suppression des outils optionnels."  # i18n-source-hash:1217d3e2
 "sections.tools.tool-management.title" = "Outils obligatoires et optionnels"  # i18n-source-hash:38f8f5ba
 "sections.tools.tool-management.summary" = "Rempli par la vérification des dépendances (wgsextract deps list). Les outils optionnels viennent dans leur propre environnement Pixi : Installer le télécharge, Désinstaller le supprime."  # i18n-source-hash:82cf38ae
+"controls.tools.tool-management.tools.hideRows.label" = "Masquer les outils obligatoires et préinstallés"  # i18n-source-hash:66398577
 "controls.tools.tool-management.tools.label" = "Outils"  # i18n-source-hash:4fa8cc86
 "controls.tools.tool-management.tools.tooltip" = "Chaque outil que la CLI vérifie. Les outils obligatoires sont fournis avec WGS Extract ; réinstallez-le pour en réparer un."  # i18n-source-hash:e8307b9e
 "columns.tools.tool-management.tools.name.title" = "Outil"  # i18n-source-hash:9a830c71

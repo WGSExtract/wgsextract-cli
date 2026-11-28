@@ -1,5 +1,6 @@
 """The external tools the CLI uses, and where Pixi provides them."""
 
+import functools
 import platform
 import sys
 from collections.abc import Callable
@@ -112,6 +113,96 @@ def required_dependency_tools(include_python: bool = True) -> list[str]:
     if include_python:
         return list(MANDATORY_TOOLS)
     return [tool for tool in MANDATORY_TOOLS if tool != "python3"]
+
+
+@functools.cache
+def host_is_arm64() -> bool:
+    """Whether the computer's CPU is ARM64, not this process's: x64 Python runs
+    emulated on Windows ARM64, and under Rosetta on Apple silicon."""
+    if sys.platform == "win32":
+        from wgsextract_cli.core.windows_arm64 import (
+            IMAGE_FILE_MACHINE_ARM64,
+            windows_native_machine,
+        )
+
+        if (native := windows_native_machine()) is not None:
+            return native == IMAGE_FILE_MACHINE_ARM64
+    elif sys.platform == "darwin":
+        from wgsextract_cli.core.native_support import _apple_silicon
+
+        return _apple_silicon()
+    return platform.machine().lower() in {"arm64", "aarch64"}
+
+
+def host_architecture() -> str:
+    """ "ARM64" or "x64": WGS Extract runs on 64-bit computers only."""
+    return "ARM64" if host_is_arm64() else "x64"
+
+
+def host_label() -> str:
+    """This computer's OS and CPU as people say them: "Windows", "macOS on
+    Apple silicon", "Linux ARM64". Never "win32": WGS Extract is 64-bit only."""
+    arm = host_is_arm64()
+    if sys.platform == "win32":
+        return "Windows ARM64" if arm else "Windows"
+    if sys.platform == "darwin":
+        return "macOS on Apple silicon" if arm else "macOS on Intel"
+    if sys.platform.startswith("linux"):
+        return "Linux ARM64" if arm else "Linux x64"
+    return f"{sys.platform} {platform.machine()}"
+
+
+_BIOCONDA_ONLY = "Bioconda, its package source, builds it for Linux and macOS only"
+_NEEDS_PYSAM = (
+    "it needs pysam, the Python binding to htslib, which has no Windows build"
+)
+_GLIMPSE2 = "GLIMPSE2 is built for x64 computers and for Linux and macOS on ARM64"
+
+# Why an optional tool has no build for some computers, shown after "isn't
+# available on <computer>" in `deps list` and the GUI's Tools page.
+UNAVAILABLE_WHY = {
+    "bwa-mem3": f"{_BIOCONDA_ONLY}; bwa-mem2 aligns instead",
+    "sambamba": "only Linux uses it, since its Apple silicon build crashes on "
+    "start and Bioconda has no Windows build; samtools sorts instead",
+    "bonefish": "it has no native Windows release; run it under WSL, or align "
+    "with minimap2",
+    "cyrius": _NEEDS_PYSAM,
+    "smn_caller.py": _NEEDS_PYSAM,
+    "paraphase": f"{_BIOCONDA_ONLY}, and {_NEEDS_PYSAM}",
+    "whatshap": _NEEDS_PYSAM,
+    "granite": "it loads pysam and pytabix (Python bindings to htslib) at "
+    "startup, and neither has a Windows build, though its qcVCF doesn't use them",
+    "longphase": "Bioconda builds it for Linux and Apple silicon Macs only",
+    "run-t1k": _BIOCONDA_ONLY,
+    "ExpansionHunter": _BIOCONDA_ONLY,
+    "LongTR": _BIOCONDA_ONLY,
+    "strkit": "its Rust extension is built for Linux and macOS only",
+    "modkit": _BIOCONDA_ONLY,
+    "verifybamid2": _BIOCONDA_ONLY,
+    "somalier": _BIOCONDA_ONLY,
+    "delly": _BIOCONDA_ONLY,
+    "freebayes": _BIOCONDA_ONLY,
+    "pbmm2": "PacBio publishes it on Bioconda for Linux x64 only",
+    "pbsv": "PacBio publishes it on Bioconda for Linux x64 only",
+    "sniffles": _BIOCONDA_ONLY,
+    "run_clair3.sh": "Bioconda builds Clair3 2.0.5+ for Linux and Apple silicon "
+    "Macs only",
+    "run_deepvariant": "Google's DeepVariant image is x86-64 only; Apple "
+    "silicon Macs use WGS Extract's native wgse-deepvariant instead",
+    "wgse-deepvariant": "DeepVariant builds only on Linux, so WGS Extract's "
+    "native build is for Linux x64 and Apple silicon Macs",
+    "GLIMPSE2_phase": _GLIMPSE2,
+    "GLIMPSE2_ligate": _GLIMPSE2,
+    "GLIMPSE2_chunk": _GLIMPSE2,
+    "GLIMPSE2_split_reference": _GLIMPSE2,
+}
+
+
+def unavailable_message(tool: str) -> str:
+    """Why ``tool`` isn't available on this computer, as a sentence."""
+    why = UNAVAILABLE_WHY.get(tool)
+    where = f"{tool} isn't available on {host_label()}"
+    return f"{where}: {why}." if why else f"{where}."
 
 
 # Optional tools the CLI only uses on some platforms (sys.platform prefixes).

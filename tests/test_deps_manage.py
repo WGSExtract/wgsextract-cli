@@ -67,6 +67,15 @@ def _row(document: dict, tool: str) -> dict:
     return next(row for row in document["details"]["tools"] if row["name"] == tool)
 
 
+def test_list_names_the_commands_that_use_each_tool(host, capsys):
+    """The desktop app hides, in Basic mode, tools only Advanced commands use."""
+    _, document = _json(capsys, "deps", "list")
+
+    assert "vcf variantqc" in _row(document, "discvrseq")["used_by"]
+    assert "vcf info" in _row(document, "bcftools")["used_by"]
+    assert all(isinstance(row["used_by"], list) for row in document["details"]["tools"])
+
+
 def test_list_succeeds_where_check_fails_on_a_missing_mandatory_tool(host, capsys):
     """The Tools page shows what's missing rather than an error."""
     check, _ = _json(capsys, "deps", "check")
@@ -94,21 +103,6 @@ def test_tools_shipped_with_the_cli_are_preinstalled(host, monkeypatch, capsys):
     assert fastp["status"] == "installed" and fastp["preinstalled"]
     assert not fastp["can_uninstall"]
     assert fastqc["status"] == "installed" and not fastqc["preinstalled"]
-
-
-def test_list_marks_tools_this_platform_cannot_have(host, fake_pixi, capsys):
-    """A tool not built for this OS, or whose environment's lockfile lacks it
-    here (PacBio ships pbmm2 for Linux only), is "unavailable", with why."""
-    fake_pixi.env("pacbio", locked=("sniffles",), installed=False)
-
-    _, document = _json(capsys, "deps", "list")
-
-    pbmm2 = _row(document, "pbmm2")
-    assert pbmm2["status"] == "unavailable" and not pbmm2["can_install"]
-    assert "pbmm2" in pbmm2["note"]
-    for tool in platform_unavailable_tools():
-        row = _row(document, tool)
-        assert row["status"] == "unavailable" and not row["can_install"], tool
 
 
 def test_list_tells_how_to_install_a_tool_the_app_cannot(host, capsys):

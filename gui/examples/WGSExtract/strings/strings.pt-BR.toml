@@ -1271,6 +1271,7 @@
 "pages.tools.summary" = "As ferramentas obrigatórias e opcionais que o WGS Extract usa, se cada uma está instalada, e a instalação ou remoção das opcionais."  # i18n-source-hash:1217d3e2
 "sections.tools.tool-management.title" = "Ferramentas obrigatórias e opcionais"  # i18n-source-hash:38f8f5ba
 "sections.tools.tool-management.summary" = "Preenchido pela verificação de dependências (wgsextract deps list). As ferramentas opcionais vêm em ambientes Pixi próprios: Instalar baixa um, Desinstalar o remove."  # i18n-source-hash:82cf38ae
+"controls.tools.tool-management.tools.hideRows.label" = "Ocultar obrigatórias e pré-instaladas"  # i18n-source-hash:66398577
 "controls.tools.tool-management.tools.label" = "Ferramentas"  # i18n-source-hash:4fa8cc86
 "controls.tools.tool-management.tools.tooltip" = "Cada ferramenta que a CLI verifica. As obrigatórias vêm com o WGS Extract; reinstale-o para reparar uma."  # i18n-source-hash:e8307b9e
 "columns.tools.tool-management.tools.name.title" = "Ferramenta"  # i18n-source-hash:9a830c71

@@ -17,11 +17,15 @@ built for this platform included, with its ``group`` ("mandatory" or
 Pixi ``environment`` and the ``environment_tools`` it provides,
 ``can_install`` and ``can_uninstall``, ``preinstalled`` (an optional tool
 that ships in the CLI's own environment, so it can't be removed on its
-own), and a ``note`` (how to install it yourself, or why it can't be had).
-A tool installed from its official release carries its ``license``
-(``name``, ``terms``, ``url``) when it has a restrictive one, and
-``license_acceptance_required`` while install needs ``accept_license``.
-It doesn't fail on a missing tool.
+own), a ``note`` (how to install it yourself, or why it can't be had), and
+``used_by``, the commands whose runs need or may use it. A tool installed
+from its official release carries its ``license`` (``name``, ``terms``,
+``url``) when it has a restrictive one, and ``license_acceptance_required``
+while install needs ``accept_license``. ``details["host"]`` describes this
+computer: ``os``, ``architecture``, ``cpu_threads``, ``cpu_cores``,
+``memory_total`` and ``memory_available`` (bytes), and ``disks``, each with
+the WGS Extract folders it holds (``used_for``) and its ``free`` and
+``total`` bytes. It doesn't fail on a missing tool.
 
 ``ready`` reports whether a command line (``command_line``, as its argv
 after ``wgsextract``) can run on this computer without the network: each

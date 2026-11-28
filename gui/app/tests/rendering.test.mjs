@@ -529,6 +529,86 @@ test("icon-only action buttons omit empty title spans so icons stay centered", a
   assert.doesNotMatch(html, /<span><\/span>/);
 });
 
+test("a library list hides rows only Advanced uses in Basic, and tagged rows while its hide box is checked", async () => {
+  globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+  globalThis.window = { innerHeight: 900 };
+  const { hiddenRowTags, modeRows } = await import("../dist/web/src/client/view.js");
+  const control = {
+    id: "tools",
+    kind: "libraryList",
+    rowCommandsValue: "usedBy",
+    hideRows: { label: "Hide built-in", tags: ["mandatory"] },
+    rows: [
+      { id: "samtools", values: { usedBy: "vcf info" }, tags: [{ id: "mandatory" }] },
+      { id: "deepvariant", values: { usedBy: "vcf deepvariant" } },
+      { id: "plain", values: { usedBy: "" } },
+    ],
+  };
+  const manifest = { pages: [{ id: "vcf", sections: [{ id: "s", actions: [{ id: "info", command: { executable: "x", arguments: ["vcf", "info"] } }] }] }] };
+
+  assert.deepEqual(modeRows(control, manifest, "basic").map((row) => row.id), ["samtools", "plain"]);
+  assert.deepEqual(modeRows(control, manifest, "advanced").map((row) => row.id), ["samtools", "deepvariant", "plain"]);
+  assert.deepEqual(hiddenRowTags(control, undefined), ["mandatory"]);
+  assert.deepEqual(hiddenRowTags(control, false), []);
+  assert.deepEqual(hiddenRowTags({ ...control, hideRows: { ...control.hideRows, checked: false } }, undefined), []);
+});
+
+test("an action keeps other pages' library lists cached unless it is in their command family", async () => {
+  globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+  globalThis.window = { innerHeight: 900 };
+  const { createInitialState, state } = await import("../dist/web/src/client/state.js");
+  const { commandFamily, invalidateAfterAction, invalidateAfterFieldChange } = await import("../dist/web/src/client/list-cache.js");
+  const list = (id, args) => ({ id, kind: "libraryList", dataSource: { path: "run.sh", arguments: args } });
+  const reset = () => {
+    Object.assign(state, createInitialState(), {
+      manifest: {
+        pages: [
+          { id: "tools", sections: [{ id: "s", controls: [list("tools", ["--json", "deps", "list"])] }] },
+          { id: "genomes", sections: [{ id: "s", controls: [list("genomes", ["--json", "ref", "library", "--list", "{{ref_path}}"])] }] },
+          { id: "vcf", sections: [{ id: "s", controls: [{ id: "callers", kind: "dropdown", dataSource: { path: "x" } }] }] },
+        ],
+      },
+    });
+    for (const key of ["control:tools", "control:genomes", "control:callers"]) state.dataSourcePayloads.set(key, {});
+  };
+  const cached = () => [...state.dataSourcePayloads.keys()].sort();
+
+  assert.equal(commandFamily(["--json", "deps", "list"]), "deps");
+  reset();
+  invalidateAfterAction({ id: "call", command: { executable: "x", arguments: ["vcf", "call"] } }, "vcf");
+  assert.deepEqual(cached(), ["control:genomes", "control:tools"]);
+  reset();
+  invalidateAfterAction({ id: "install", command: { executable: "x", arguments: ["deps", "install", "gatk"] } }, "vcf");
+  assert.deepEqual(cached(), ["control:genomes"]);
+  reset();
+  invalidateAfterAction({ id: "index", command: { executable: "x", arguments: ["ref", "index"] } }, "tools");
+  assert.deepEqual(cached(), []);
+  reset();
+  invalidateAfterAction({ id: "chip", command: { executable: "x", arguments: ["microarray", "--ref", "r"], optionalArguments: [["--download"]] } }, "vcf");
+  assert.deepEqual(cached(), []);
+  // Microarray's Downloads checkbox puts --download in through a placeholder: ticked, it drops every list.
+  const chip = { id: "chip", command: { executable: "x", arguments: ["microarray"], optionalArguments: [["{{microarray_download}}"]] } };
+  reset();
+  invalidateAfterAction(chip, "vcf", { checkedOptions: { microarray_download: "--download" } });
+  assert.deepEqual(cached(), []);
+  reset();
+  invalidateAfterAction(chip, "vcf", { checkedOptions: { microarray_download: "" } });
+  assert.deepEqual(cached(), ["control:genomes", "control:tools"]);
+  reset();
+  invalidateAfterFieldChange(["ref_path"]);
+  assert.deepEqual(cached(), ["control:tools"]);
+  // Placeholders are read as interpolation reads them: spaces and a config. prefix still name the field.
+  for (const placeholder of ["{{ ref_path }}", "{{config.ref_path}}", "{{ref_path.all}}"]) {
+    reset();
+    state.manifest.pages[1].sections[0].controls[0].dataSource.arguments = ["--json", "ref", "library", "--list", placeholder];
+    invalidateAfterFieldChange(["ref_path"]);
+    assert.deepEqual(cached(), ["control:tools"], placeholder);
+  }
+  reset();
+  invalidateAfterFieldChange(["ref"]);
+  assert.deepEqual(cached(), ["control:genomes", "control:tools"]);
+});
+
 test("renders genome build values as colorful library table pills", async () => {
   globalThis.localStorage = {
     getItem() {

@@ -348,7 +348,6 @@ function toolTooltip(tool) {
     };
     const extras = [];
     if (tool.path) extras.push(["Installed path", tool.path]);
-    if (tool.note) extras.push(["Note", tool.note]);
     return formatProvenanceTooltip({ ...meta, extras });
 }
 
@@ -362,7 +361,27 @@ export function items(document) {
     if (!Array.isArray(tools)) {
         throw new Error("wgsextract deps list printed no tool list.");
     }
-    return { items: [...tools].sort(compareTools).map(row) };
+    return { items: [...tools].sort(compareTools).map(row), facts: hostFacts(document.details.host) };
+}
+
+/** The computer the CLI runs on, shown above the table: what deps list's `host` reports. */
+export function hostFacts(host) {
+    if (!host || typeof host !== "object") return [];
+    const cores = [host.cpu_cores && `${host.cpu_cores} cores`, host.cpu_threads && `${host.cpu_threads} threads`].filter(Boolean).join(", ");
+    const facts = [
+        ["Operating system", host.os],
+        ["Architecture", host.architecture],
+        ["CPU", cores],
+        ["Memory", host.memory_total ? `${bytes(host.memory_total)} total, ${bytes(host.memory_available)} available` : ""],
+        ["Free disk", (host.disks ?? []).map((disk) => `${bytes(disk.free)} of ${bytes(disk.total)} (${(disk.used_for ?? []).join(", ")})`).join("; ")],
+    ];
+    return facts.filter(([, value]) => value).map(([label, value]) => ({ label, value: String(value) }));
+}
+
+function bytes(count) {
+    const value = Number(count) || 0;
+    const tib = value / 1024 ** 4;
+    return tib >= 1 ? `${tib.toFixed(2)} TiB` : `${(value / 1024 ** 3).toFixed(1)} GiB`;
 }
 
 const STATUS_ORDER = { installed: 0, missing: 1, unavailable: 2 };
@@ -378,11 +397,17 @@ function compareTools(a, b) {
         || String(a.name).localeCompare(String(b.name), "en", { sensitivity: "base" });
 }
 
-/** Mandatory, optional, or pre-installed: optional but shipped with the CLI, so it can't be removed on its own. */
+/**
+ * Mandatory, optional, or pre-installed: optional but shipped with the CLI, so it can't be removed on its own. A
+ * mandatory or pre-installed tool that isn't installed gets its own id ("mandatory-missing"), so the page's "hide
+ * mandatory and pre-installed" box never hides the rows most worth seeing; its pill reads the same.
+ */
 function groupTag(tool) {
-    if (tool.group === "mandatory") return { id: "mandatory", title: "mandatory", style: "primary" };
-    if (tool.preinstalled) return { id: "pre-installed", title: "pre-installed", style: "secondary" };
-    return { id: tool.group, title: tool.group, style: "secondary" };
+    const builtIn = tool.group === "mandatory" ? "mandatory" : tool.preinstalled ? "pre-installed" : "";
+    if (!builtIn) return { id: tool.group, title: tool.group, style: "secondary" };
+    const style = builtIn === "mandatory" ? "primary" : "secondary";
+    const id = tool.status === "installed" ? builtIn : `${builtIn}-${tool.status}`;
+    return { id, title: builtIn, style };
 }
 
 function row(tool) {
@@ -395,6 +420,7 @@ function row(tool) {
         tooltip: toolTooltip(tool),
         values: {
             name: tool.name,
+            usedBy: (tool.used_by ?? []).join(","),
             details: installed ? tool.version ?? "" : tool.note ?? "",
             environment: source(tool),
             environmentTools: (tool.environment_tools ?? []).join(", "),

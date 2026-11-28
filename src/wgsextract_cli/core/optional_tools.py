@@ -20,7 +20,6 @@ from __future__ import annotations
 import argparse
 import logging
 import os
-import platform
 import shlex
 import sys
 from collections.abc import Callable, Iterable
@@ -44,7 +43,9 @@ from wgsextract_cli.core.tool_catalog import (
     OPTIONAL_TOOLS,
     PIXI_SETUP_HINTS,
     PIXI_TOOL_ENVS,
+    host_label,
     platform_unavailable_tools,
+    unavailable_message,
 )
 from wgsextract_cli.core.tool_commands import _tool_command_parts
 from wgsextract_cli.core.utils import (
@@ -132,21 +133,17 @@ def installable(tool: str) -> bool:
     )
 
 
-def _host() -> str:
-    return f"{sys.platform} {platform.machine()}"
-
-
 def _unavailable_reason(tool: str) -> str | None:
     """Why ``tool`` can't be had on this computer, or None when it can, from
     its environment or from a release the user installs."""
     if tool in platform_unavailable_tools():
-        return f"{tool} isn't built for {_host()}."
+        return unavailable_message(tool)
     reason = unsupported_windows_arm64_tool(tool) or tool_unsupported_reason(tool)
     if reason:
         return reason
     no_build = PIXI_TOOL_ENVS.get(tool) and locked_for_platform(tool) is False
     if no_build and tool not in INSTALL_HINTS:
-        return f"No {tool} build is available for {_host()}."
+        return unavailable_message(tool)
     return None
 
 
@@ -289,7 +286,7 @@ def unavailable_row(tool: str) -> dict[str, Any]:
         "can_install": False,
         "can_uninstall": False,
         "preinstalled": False,
-        "note": f"{tool} isn't built for {_host()}.",
+        "note": unavailable_message(tool),
     }
 
 
@@ -306,7 +303,7 @@ def _environment_for(tool: str) -> str:
             f"Unknown tool {tool!r}. 'wgsextract deps list' lists the tools."
         )
     if tool in platform_unavailable_tools():
-        raise WGSExtractError(f"{tool} isn't built for {_host()}.")
+        raise WGSExtractError(unavailable_message(tool))
     env = PIXI_TOOL_ENVS.get(tool)
     if env is None:
         raise WGSExtractError(
@@ -417,7 +414,7 @@ def install(tool: str, *, accept_license: bool = False) -> dict[str, Any]:
         raise WGSExtractError(reason)
     if locked_for_platform(tool) is False:
         raise WGSExtractError(
-            f"No {tool} build is available for {_host()}. {INSTALL_HINTS[tool]}"
+            f"No {tool} build is available for {host_label()}. {INSTALL_HINTS[tool]}"
         )
     tools = environment_tools(env)
     logging.info(

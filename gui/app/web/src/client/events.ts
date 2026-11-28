@@ -5,6 +5,7 @@ import { installGlobalBundleLoadHandler, loadBundleFromPicker, type Bootstrap } 
 import { bindCertificationLinks } from "./certification-links.js";
 import { normalizeColorTheme, normalizeIconSet } from "./icons.js";
 import { elements, errorMessage, findControl, resolveText } from "./model.js";
+import { invalidateAfterFieldChange } from "./list-cache.js";
 import { checkedOptionsChanged, clearDataSourceCache, clearFileStateCache, configSettingChanged, fieldValueChanged, loadConfig, cancelSetup, openBundleWorkspace, persistBundleState, retryActionPrecheck, retryDataSource, runAction, runSetup, saveConfig } from "./operations.js";
 import { cancelPendingAlreadyRun, forceRunPendingAlreadyRun } from "./operations-already-run.js";
 import { cancelPendingPrerequisites, continuePendingPrerequisites, installPendingPrerequisites } from "./operations-prerequisites-dialog.js";
@@ -133,7 +134,7 @@ export function bindEvents(bootstrap: Bootstrap) {
                 }
             }
             await fieldValueChanged(nextValue, control);
-            clearDataSourcesAndRender();
+            clearFieldDataSourcesAndRender([id]);
         });
     });
     elements("[data-path-prompt]").forEach((button) => {
@@ -145,7 +146,7 @@ export function bindEvents(bootstrap: Bootstrap) {
             const value = await chooseLocalPath(control, state.fieldValues[id] ?? "");
             if (value) {
                 await fieldValueChanged(value, control);
-                clearDataSourcesAndRender();
+                clearFieldDataSourcesAndRender([id]);
             }
         });
     });
@@ -162,7 +163,7 @@ export function bindEvents(bootstrap: Bootstrap) {
                 const combined = [...existing, ...added];
                 if (combined.length > 0) {
                     await fieldValueChanged(combined.join("\n"), control);
-                    clearDataSourcesAndRender();
+                    clearFieldDataSourcesAndRender([id]);
                 }
             }
         });
@@ -180,7 +181,7 @@ export function bindEvents(bootstrap: Bootstrap) {
             if (Number.isInteger(index) && index >= 0 && index < existing.length) {
                 existing.splice(index, 1);
                 await fieldValueChanged(existing.join("\n"), control);
-                clearDataSourcesAndRender();
+                clearFieldDataSourcesAndRender([id]);
             }
         });
     });
@@ -191,7 +192,7 @@ export function bindEvents(bootstrap: Bootstrap) {
             state.checkedOptions[groupID] = selected;
             input.checked ? selected.add(input.value) : selected.delete(input.value);
             await checkedOptionsChanged(selected, findControl(groupID));
-            clearDataSourcesAndRender();
+            clearFieldDataSourcesAndRender([groupID]);
         });
     });
     elements<HTMLInputElement>("[data-config-path]").forEach((input) => {
@@ -329,6 +330,12 @@ export function bindEvents(bootstrap: Bootstrap) {
             });
             const none = table?.querySelector<HTMLElement>("[data-library-no-matches]");
             if (none) none.hidden = shown > 0;
+        });
+    });
+    elements<HTMLInputElement>("[data-library-hide-rows]").forEach((input) => {
+        input.addEventListener("change", () => {
+            state.libraryHideRows.set(requiredDataset(input, "libraryHideRows"), input.checked);
+            scheduleRender();
         });
     });
     elements("[data-section-toggle]").forEach((button) => {
@@ -483,13 +490,25 @@ async function selectUIMode(value: string) {
     await persistAndRender();
 }
 
+/** Redraws even when saving fails, so what the user just changed (the page, the mode) always shows. */
 async function persistAndRender(options = {}) {
-    await persistBundleState(options);
-    scheduleRender();
+    try {
+        await persistBundleState(options);
+    }
+    finally {
+        scheduleRender();
+    }
 }
 
 function clearDataSourcesAndRender() {
     clearDataSourceCache();
+    clearFileStateCache();
+    scheduleRender();
+}
+
+/** After a field changed: library lists that don't use it stay cached. */
+function clearFieldDataSourcesAndRender(ids: string[]) {
+    invalidateAfterFieldChange(ids);
     clearFileStateCache();
     scheduleRender();
 }

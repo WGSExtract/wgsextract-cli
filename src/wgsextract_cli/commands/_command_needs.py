@@ -105,3 +105,13 @@ class _CommandNeedsRegistry(Mapping[str, CommandNeeds]):
 
 
 COMMAND_NEEDS: Mapping[str, CommandNeeds] = _CommandNeedsRegistry()
+
+
+def tool_users() -> dict[str, list[str]]:
+    """Each tool's commands: those whose runs need it or may use it, so the
+    desktop app can tell which tools only its Advanced mode's commands use."""
+    users: dict[str, list[str]] = {}
+    for path, needs in COMMAND_NEEDS.items():
+        for tool in dict.fromkeys(needs.tools + needs.optional):
+            users.setdefault(tool, []).append(path)
+    return users

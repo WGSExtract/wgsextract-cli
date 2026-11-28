@@ -42,12 +42,22 @@
               "title": "columns.tools.tool-management.tools.environment.title"
             }
           ],
+          "hideRows": {
+            "label": "controls.tools.tool-management.tools.hideRows.label",
+            "tags": [
+              "mandatory",
+              "pre-installed"
+            ],
+            "checked": true
+          },
+          "rowCommandsValue": "usedBy",
           "rowTemplate": {
             "id": "{{id}}",
             "title": "{{name}}",
             "status": "{{status}}",
             "values": {
               "name": "{{name}}",
+              "usedBy": "{{usedBy}}",
               "details": "{{details}}",
               "environment": "{{environment}}",
               "environmentTools": "{{environmentTools}}",
