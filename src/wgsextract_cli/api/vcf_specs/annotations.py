@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from wgsextract_cli.api._network import DownloadParams
-from wgsextract_cli.api._params import param
+from wgsextract_cli.api._params import param, with_config_defaults
 from wgsextract_cli.api._shared import (
     check_confidence,
     confidence_depth_param,
@@ -111,7 +111,7 @@ class VcfGerpParams(_AnnotatorParams):
 
 @dataclass(frozen=True, kw_only=True)
 class VcfGnomadParams(_AnnotatorParams):
-    """gnomAD allele frequencies and available homozygote counts as
+    """gnomAD allele frequencies, available ancestry-group maximum FAF95 and homozygote counts as
     ``gnomad_annotated.vcf.gz``."""
 
     COMMAND = "vcf gnomad"
@@ -327,6 +327,19 @@ class VcfAlphamissenseParams(_AnnotatorParams):
 
 
 @dataclass(frozen=True, kw_only=True)
+class VcfRegulatoryParams(_AnnotatorParams):
+    """Research-only SCREEN cCRE overlap per ALT in ``regulatory_annotated.vcf.gz``."""
+
+    COMMAND = "vcf regulatory"
+
+    def implied_paths(self) -> Iterator[tuple[str, Path]]:
+        from wgsextract_cli.core import regulatory_data
+
+        filled = with_config_defaults(self, only={"ref"})
+        yield from regulatory_data.guarded_paths(filled.ref)
+
+
+@dataclass(frozen=True, kw_only=True)
 class VcfPharmgkbParams(_AnnotatorParams):
     """PharmGKB drug-response annotations as ``pharmgkb_annotated.vcf.gz``
     (GRCh38 only)."""
@@ -426,8 +439,8 @@ class VcfPharmcatParams(_VcfFileParams, DownloadParams):
 @dataclass(frozen=True, kw_only=True)
 class VcfChainAnnotateParams(_VcfFileParams):
     """Several annotations applied in turn, as ``chain_annotated.vcf.gz``;
-    steps whose tool or data is missing are skipped with a warning. A step
-    journal lets interrupted chains resume from their last completed step."""
+    steps whose tool or data is missing are skipped with a warning, except
+    explicitly requested SCREEN overlap. A step journal supports resuming."""
 
     COMMAND = "vcf chain-annotate"
 
@@ -455,7 +468,7 @@ class VcfChainAnnotateParams(_VcfFileParams):
     force_steps: tuple[str, ...] | None = force_steps_param(
         (
             "select", "clinvar", "revel", "phylop", "cadd", "gerp", "gnomad",
-            "spliceai", "alphamissense", "pharmgkb", "vep", "trim",
+            "spliceai", "alphamissense", "pharmgkb", "regulatory", "vep", "trim",
         ),
         aliases=("--force-steps",),
     )  # fmt: skip
@@ -468,6 +481,15 @@ class VcfChainAnnotateParams(_VcfFileParams):
     table_format: str | None = param(
         None, help="Format with --to-table (default: tsv).", choices=("tsv", "parquet")
     )
+
+    def implied_paths(self) -> Iterator[tuple[str, Path]]:
+        if any(
+            ann.strip().lower() == "regulatory" for ann in self.annotations.split(",")
+        ):
+            from wgsextract_cli.core import regulatory_data
+
+            filled = with_config_defaults(self, only={"ref"})
+            yield from regulatory_data.guarded_paths(filled.ref)
 
     def __post_init__(self) -> None:
         super().__post_init__()

@@ -8,6 +8,7 @@ from urllib.parse import unquote
 from wgsextract_cli.core.output_schema import Constraints
 
 IDENTITY = "WGSE_CLINVAR_ID"
+GERMLINE = "WGSE_CLINVAR_GERMLINE"
 STARS = "WGSE_CLINVAR_STARS"
 TIER = "WGSE_CLINVAR_REVIEW"
 COMPONENTS = "WGSE_MNV_COMPONENTS"
@@ -52,6 +53,42 @@ def review_evidence(info: Mapping[str, object]) -> ClinicalEvidenceDocument:
         conflict=conflicting,
         conflict_evidence=conflict or None,
     )
+
+
+def matched_germline_aggregate(
+    info: Mapping[str, str],
+    numbers: Mapping[str, str],
+    alt_count: int,
+    alt_index: int,
+    clinical: Mapping[str, str | None],
+    significance: str | None,
+) -> str | None:
+    """Only direct CLNSIG with a bound ClinVar Variation ID, never VEP text."""
+    identity = clinical[IDENTITY]
+    if not identity or not identity.isascii() or not identity.isdecimal():
+        return None
+    status = clinical["CLNREVSTAT"]
+    if not significance or not status:
+        return None
+    claims = info.get(GERMLINE, "").split(",")
+    marked = (
+        numbers.get(GERMLINE) == "A"
+        and len(claims) == alt_count
+        and claims[alt_index - 1] == significance
+    )
+    for key in (IDENTITY, "CLNSIG", "CLNREVSTAT", "CLNSIGCONF"):
+        raw = info.get(key)
+        if not raw or raw == ".":
+            continue
+        number = numbers.get(key)
+        if number in {"A", "R"}:
+            if len(raw.split(",")) != alt_count + (number == "R"):
+                return None
+        elif alt_count != 1 or not marked:
+            # Scalar fields can survive splitting unchanged. A per-ALT
+            # germline assertion from the exact-match annotator binds them.
+            return None
+    return unquote(significance)
 
 
 def nonredundant_calls(calls: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:

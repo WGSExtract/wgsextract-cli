@@ -128,8 +128,7 @@ class PanelCheckParams(Params):
     )
     build: str | None = param(
         None,
-        help="Resolve genes in hg38 (GRCh38), t2t (CHM13v2.0) or hg19 (GRCh37) "
-        "(default: the panel's build, else hg38)",
+        help="Gene build (default: panel build or hg38).",
         flags=("--build",),
         choices=BUILDS,
     )
@@ -166,52 +165,65 @@ class PanelAuditParams(PanelCheckParams):
     )
     research_panel: bool = param(
         False,
-        help="Acknowledge that results are for research only, not a diagnosis.",
+        help="Acknowledge research-only use, not diagnosis.",
         flags=("--research-panel",),
         action="store_true",
     )
     gvcf: Path | None = param(
         None,
-        help="Local gVCF of the same sample (default: input or companion gVCF)",
+        help="Same-sample gVCF (default: input or companion).",
         flags=("--gvcf",),
         path="file",
         metavar="GVCF",
     )
     exons: Path | None = param(
         None,
-        help="Local exon model like `vcf callability --exons`",
+        help="Local exon model (`vcf callability --exons`).",
         flags=("--exons",),
         path="file",
         metavar="FILE",
     )
+    target_cnv: Path | None = param(
+        None,
+        help="Local target-cnv TSV (panel and controls).",
+        flags=("--target-cnv",),
+        path="file",
+        metavar="TSV",
+    )
+    target_cnv_manifest: Path | None = param(
+        None,
+        help="Result manifest for --target-cnv.",
+        flags=("--target-cnv-manifest",),
+        path="file",
+        metavar="JSON",
+    )
     null_sets: int | None = param(
         None,
-        help="Run calibration with this many null sets (100 to 100,000).",
+        help="Calibration draws (100–100,000).",
         flags=("--null-sets",),
         minimum=100,
     )
     seed: int | None = param(
         None,
-        help="Reproducible seed for null calibration.",
+        help="Calibration random seed.",
         flags=("--seed",),
         minimum=0,
     )
     no_calibration: bool = param(
         False,
-        help="Skip null calibration, even if the panel requests it.",
+        help="Skip calibration requested by the panel.",
         flags=("--no-calibration",),
         action="store_true",
     )
     gnomad_expected: bool = param(
         False,
-        help="Compare the CDS null with one also matched on gnomAD v4.1 expected synonymous counts.",
+        help="Also match on gnomAD v4.1 expected synonymous counts.",
         flags=("--gnomad-expected",),
         action="store_true",
     )
     download: bool = param(
         False,
-        help="Allow fetching missing pinned public calibration data from "
-        "WGSExtract's GitHub release; sends no sample data.",
+        help="Fetch missing pinned calibration data from WGSExtract GitHub; sends no sample data.",
         flags=("--download",),
         action="store_true",
     )
@@ -285,6 +297,8 @@ class PanelAuditParams(PanelCheckParams):
         super().__post_init__()
         if not self.research_panel:
             raise UsageError("Give --research-panel to acknowledge research-only use.")
+        if (self.target_cnv is None) != (self.target_cnv_manifest is None):
+            raise UsageError("Give --target-cnv and --target-cnv-manifest together.")
         if self.null_sets is not None and self.null_sets > 100000:
             raise UsageError("--null-sets must be at most 100,000.")
         if self.seed is not None and self.seed > 2**53:

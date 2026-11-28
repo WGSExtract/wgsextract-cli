@@ -44,5 +44,5 @@ def install(root: Path) -> Path:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=Path, default=Path("/Users/wgse/mockup-server"))
+    parser.add_argument("--root", type=Path, default=Path.home() / "mockup-server")
     print(install(parser.parse_args().root))

@@ -243,6 +243,8 @@ export function localizationLabels(table: StringMap = {}) {
         sectionCollapseLabel: table["app.section.collapse.label"] ?? "Collapse Section",
         loadWebUITitle: table["app.error.loadWebUI.title"] ?? "Could not load Web UI",
         libraryEmptyTitle: table["app.library.empty"] ?? "No library items are defined.",
+        libraryFilterLabel: table["app.library.filter.label"] ?? "Filter by keyword",
+        libraryNoMatchesTitle: table["app.library.noMatches"] ?? "No items match the filter.",
         actionMissingInputsFormat: table["app.action.missingInputs.format"] ?? "Missing: %{inputs}",
         actionUnavailableTitle: table["app.action.unavailable.title"] ?? "This action is not available.",
         terminalCloseTabLabelFormat: table["app.terminal.closeTab.labelFormat"] ?? "Close %{title}",

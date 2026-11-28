@@ -162,7 +162,8 @@ accuracy guarantee for other ancestries or arrays.
 
 ### Resources
 
-Measured on lin-big with four threads, before chunks ran side by side:
+Measured on a Linux x86-64 host with 62 GB of RAM and four threads, before
+chunks ran side by side:
 
 | Step | chr20 wall time | Peak RSS |
 |---|---|---|
@@ -214,7 +215,7 @@ The Phase 0 scripts, per-bin JSON, time.tsv and logs are retained in
 ### Product-command validation
 
 The actual `ref imputation --install --chromosomes chr20` and `vcf impute`
-commands were run on lin-big against the same 1x BAM, under an agent-coord
+commands were run on the same Linux host against the same 1x BAM, under an agent-coord
 four-core/8 GiB lease (nominal 1x input; product depth estimate 1.15x).
 The installer reused and SHA-256-verified the original
 download on that host, then prepared its own panel and binary chunks.
@@ -229,8 +230,7 @@ again. The product wrote 1,430,673 labelled sites (9,785 `ImpLowConf`),
 with the provenance header and a result manifest. Panel preparation took
 7 min 34 s; imputation and labelling took 7 min 3 s, peaking at 2.7 GB RSS.
 Evidence (`comparison.json`, GIAB evaluation, header, timings and command
-log) is retained in `out/621/product/`. The large output stays on lin-big,
-under `/mnt/models/wgse-621/out/621/product/output/`.
+log) is retained in `out/621/product/` in the validation checkout.
 
 The corrected **Beagle** product command was also run end to end on chr20,
 with the same chip VCF and product panel, under a four-core/
@@ -246,8 +246,7 @@ filter and the GP-only rule. The header records `MinGP=0.95` without a
 
 The product wrote 1,416,853 imputed sites (27,740 `ImpLowConf`), took
 2 min 34 s including input preparation/labelling, and peaked at 2.2 GB RSS.
-Evidence is in `out/621/product-beagle/`; its large VCF remains at
-`/mnt/models/wgse-621/out/621/product-beagle/output/`.
+Evidence is in `out/621/product-beagle/` in the validation checkout.
 
 The no-call fixture probe at chr20:10,008,603 is filled as `1|1`, GP=1,
 DR2=0, **PASS and IMP**, and its exported table row has `imputed=1`.

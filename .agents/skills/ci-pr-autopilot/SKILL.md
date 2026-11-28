@@ -62,9 +62,10 @@ author enabled auto-merge or enqueued it themselves.
 
 ## Review Comment Policy
 
-Before opening the draft, obtain an independent local review, fix its
-findings, run `pixi run lint` and relevant tests/type checks, and self-review
-against AGENTS.md. Copilot reviews the draft, not the ready PR: ruleset
+Before opening the draft, follow the scoped local gate in AGENTS.md.
+Trivial site/docs PRs need one review; obtain an independent review as well
+as Copilot for policy, generated contracts and product changes. Copilot
+reviews the draft, not the ready PR: ruleset
 `15885247` reviews PRs, drafts included, when opened, but not later pushes
 (checked 2026-11-21). After pushing to a draft, request a fresh review with
 `gh pr edit <number> --add-reviewer @copilot`, wait for it, and handle all its
@@ -73,8 +74,9 @@ this skill created, run `gh pr ready` once that gate passes and the review
 threads are handled, unless the user explicitly requires it to remain draft.
 For an existing draft, obtain authorization before marking ready. Readiness
 starts area-selected full CI; do not land using the old draft-run checks.
-Certify macOS (and Windows where a host exists) on the exact head before
-ready. Immediately before `gh pr ready`, run `python scripts/ci_capacity.py
+Certify only when review is settled on the exact head. Use the ready router
+and immediate native slots per AGENTS.md; leave unavailable layers to hosted
+CI. Immediately before `gh pr ready`, run `python scripts/ci_capacity.py
 --wait --pr N` in a background watcher and proceed only on exit 0.
 Priority PRs skip this gate. Other PRs reserve capacity while a priority PR's
 CI can still schedule jobs or its queue entry still needs checks, even if no
@@ -84,7 +86,9 @@ Admit one PR at a time per supervisor: start the next check only after the
 previously admitted PR's ready area run is visible.
 
 A DIRTY PR is never enqueued by auto-merge; the `auto-merge-blocked` label
-marks one. Merge the base branch, resolve the conflicts and push.
+marks one. Dequeue if needed and convert to draft before pushing a fix or
+required refresh. Settle review on the new head before certifying or marking
+ready again.
 
 Collect all open threads before editing and push one locally verified batch
 per review round. Notify the responsible agent on new threads; handle them
@@ -121,8 +125,8 @@ For every failing check:
 2. Reproduce locally when feasible.
 3. Fix root causes, not symptoms.
 4. Run the narrowest relevant local verification first, then the comprehensive local suite before merge.
-5. Push a normal commit.
-6. Wait for CI to rerun and finish.
+5. Convert to draft before pushing a fix, then repeat the exact-head review and readiness gate.
+6. Wait for the new ready CI to finish.
 
 Stop and report instead of continuing when:
 

@@ -42,7 +42,18 @@ release `ancestry-ref-1` into `<library>/ancestry/` only with `--download`, or w
 `wgsextract ref ancestry --install`. Its SHA-256 is pinned and checked before
 every use. `ref ancestry --delete` removes it. It covers GRCh38, GRCh37/hg19
 (186,306 of the sites lift over) and T2T-CHM13 (140,020).
-`scripts/ancestry_reference/` rebuilds it from gnomAD.
+`scripts/ancestry_reference/` rebuilds it from gnomAD. For the maintainer-only
+`package` step, pass `--config /path/to/config.toml` with the local assemblies:
+
+```toml
+[ancestry_reference.fasta]
+GRCh38 = "/path/to/GRCh38.fa"
+GRCh37 = "/path/to/GRCh37.fa"
+CHM13 = "/path/to/CHM13.fa"
+```
+
+Index each FASTA with `samtools faidx` first. Relative paths are resolved from
+the configuration file's directory.
 
 Without a verified local reference, the default command errors without a
 connection attempt and asks for `--download`. See [privacy](privacy.md) for

@@ -2608,3 +2608,19 @@ a.doc-link {
   width: auto;
   max-width: 100%;
 }
+
+/* A table's keyword filter, above the table it narrows. */
+.library-list-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5em 1em;
+}
+
+.library-list-header .control-label {
+  margin-bottom: 0;
+}
+
+.library-filter {
+  width: min(100%, 24em);
+}

@@ -541,14 +541,14 @@ def test_776_public_peer_gets_403_even_with_forwarded_header(
 @pytest.mark.parametrize(
     ("address", "allowed"),
     [
-        ("10.1.10.48", True),
+        ("10.0.0.1", True),
         ("172.16.0.1", True),
         ("192.168.1.1", True),
         ("100.102.38.43", True),
         ("127.0.0.1", True),
         ("::1", True),
         ("fd7a:115c:a1e0::1", True),
-        ("::ffff:10.1.10.48", True),
+        ("::ffff:10.0.0.1", True),
         ("8.8.8.8", False),
         ("169.254.1.1", False),
         ("100.128.0.1", False),

@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
-host=randy-mini
-url=http://randy-mini.tail720e6b.ts.net:8765/api/health
+host=
+url=
 retry_delay=10
 coordinator="$HOME/.local/bin/agent-coord"
 state_file="${XDG_STATE_HOME:-$HOME/.local/state}/mockup-server/watchdog.state"
@@ -21,6 +21,10 @@ while [ "$#" -gt 0 ]; do
     esac
     shift 2
 done
+if [ -z "$host" ] || [ -z "$url" ]; then
+    echo "Both --host (SSH destination) and --url (HTTP health endpoint) are required" >&2
+    exit 2
+fi
 if [ -z "$state_file" ] || [ -d "$state_file" ]; then
     echo "State file must name a file, not a directory" >&2
     exit 2
@@ -79,7 +83,7 @@ save_state() {
     mv -f "$state_tmp" "$state_file"
 }
 healthy() {
-    curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$url" |
+    curl --fail --silent --show-error --connect-timeout 10 --max-time 20 -- "$url" |
         grep -Eq '"ok"[[:space:]]*:[[:space:]]*true'
 }
 alert() {
@@ -95,8 +99,8 @@ if healthy; then
     exit 0
 fi
 ssh_failed=0
-ssh -o BatchMode=yes -o ConnectTimeout=15 "$host" '
-    /usr/bin/python3 /Users/wgse/mockup-server/app/gui/mockups/hosting/recover.py
+ssh -o BatchMode=yes -o ConnectTimeout=15 -- "$host" '
+    /usr/bin/python3 "$HOME/mockup-server/app/gui/mockups/hosting/recover.py"
 ' || ssh_failed=1
 sleep "$retry_delay"
 if healthy; then

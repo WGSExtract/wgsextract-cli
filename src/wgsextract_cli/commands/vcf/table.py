@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import IO
 
 from wgsextract_cli.api.vcf import VcfTableParams
+from wgsextract_cli.core import _variant_table_protein as protein
 from wgsextract_cli.core import acmg
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.builds import (
@@ -22,6 +23,7 @@ from wgsextract_cli.core.builds import (
     build_from_reference_header,
 )
 from wgsextract_cli.core.dependency_checks import verify_dependencies
+from wgsextract_cli.core.gnomad_fields import GNOMAD_FAF95, gnomad_native_faf95
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.process_registry import terminate_trees
 from wgsextract_cli.core.ref_library.models import sequence_lengths
@@ -326,6 +328,9 @@ def run_table(params: VcfTableParams) -> None:
         header = stream.header
         build = (scope.build if scope else None) or _reference_build(header)
         annotations = ",".join(header.annotations)
+        protein_annotation_fields = protein.annotation_fields(
+            header.csq_fields or (), header.ann_fields or ()
+        )
         research_acmg = "acmg" in header.annotations
         # A full pass over the VCF, so only when SQLite or Parquet keeps it.
         keeps_metadata = sqlite_path is not None or params.table_format == "parquet"
@@ -337,6 +342,7 @@ def run_table(params: VcfTableParams) -> None:
             sample=sample or "",
             region=params.region or "",
             annotations=annotations,
+            protein_annotation_fields=protein_annotation_fields,
             carried_only=str(not params.all_alleles).lower(),
             acmg_disclaimer=acmg.DISCLAIMER if research_acmg else None,
         )
@@ -366,10 +372,24 @@ def run_table(params: VcfTableParams) -> None:
         sample=sample,
         reference_build=build,
         annotations=annotations,
+        protein_annotation_fields=protein_annotation_fields,
         **{f"{name}_rows": n for name, n in frequencies.items()},
     )
     if header.annotations:
         _warn_missing_gnomad(input_vcf, header, rows, frequencies)
+        if (
+            frequencies["gnomad_af"]
+            and "GNOMAD_AF" in header.info_number
+            and GNOMAD_FAF95 not in header.info_number
+            and gnomad_native_faf95(header.info_number) is None
+        ):
+            warn(
+                "gnomad_faf95_unavailable",
+                "The VCF has gnomAD allele frequencies but no ancestry-group maximum "
+                "FAF95 (gnomad_faf95). To fill it, rerun 'wgsextract vcf gnomad' "
+                "with an updated gnomAD v4.1 table or sites VCF that contains FAF95.",
+                path=input_vcf,
+            )
     else:
         warn(
             "nothing_annotated",

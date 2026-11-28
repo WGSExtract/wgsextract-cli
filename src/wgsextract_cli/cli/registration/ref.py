@@ -32,6 +32,7 @@ from wgsextract_cli.api.ref import (
     RefPharmgkbParams,
     RefPhylopParams,
     RefRecheckParams,
+    RefRegulatoryParams,
     RefRevelParams,
     RefSomalierParams,
     RefSpliceaiParams,
@@ -147,6 +148,9 @@ CERTIFICATION = {
         "test_cytobands.py",
         "Cytoband normalization checked on fixture resources.",
     ),
+    "ref regulatory": tested(
+        _REVIEWED, "test_regulatory.py", "SCREEN track acquisition checked on fixtures."
+    ),
     "ref clinvar": tested(
         _REVIEWED,
         "test_annotation_downloads.py",
@@ -243,6 +247,7 @@ NEEDS = {
     "ref microarray-targets": _n(MINUTES),
     "ref gene-map": _n(DOWNLOAD, optional="bgzip curl tabix"),
     "ref cytobands": _n(DOWNLOAD, optional="curl"),
+    "ref regulatory": _n(DOWNLOAD, optional="bgzip tabix curl"),
     "ref clinvar": _n(DOWNLOAD, optional="bgzip curl tabix"),
     "ref dbsnp": _n(DOWNLOAD, optional="bgzip curl tabix"),
     "ref revel": _n(DOWNLOAD, optional="bgzip curl tabix"),
@@ -271,6 +276,9 @@ cmd_count_ns = command_handler(
 )
 cmd_cytobands = command_handler(
     "wgsextract_cli.commands.ref.cytobands", "cmd_cytobands"
+)
+cmd_regulatory = command_handler(
+    "wgsextract_cli.commands.ref.regulatory", "cmd_regulatory"
 )
 cmd_dense_sa = command_handler("wgsextract_cli.commands.ref.dense_sa", "cmd_dense_sa")
 cmd_download = command_handler(
@@ -540,6 +548,12 @@ def register(
         RefCytobandsParams,
         cmd_cytobands,
         "Validate installed hg19/hg38 UCSC cytobands; download missing data only with --download.",
+    )
+    add(
+        "regulatory",
+        RefRegulatoryParams,
+        cmd_regulatory,
+        "Check, download or import the GRCh38 SCREEN cCRE track.",
     )
     for cls, run in RESOURCE_COMMANDS:
         name = cls.COMMAND.removeprefix("ref ")

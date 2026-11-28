@@ -95,6 +95,7 @@ from .vcf_specs.annotations import VcfGnomadParams as VcfGnomadParams
 from .vcf_specs.annotations import VcfPharmcatParams as VcfPharmcatParams
 from .vcf_specs.annotations import VcfPharmgkbParams as VcfPharmgkbParams
 from .vcf_specs.annotations import VcfPhylopParams as VcfPhylopParams
+from .vcf_specs.annotations import VcfRegulatoryParams as VcfRegulatoryParams
 from .vcf_specs.annotations import VcfRevelParams as VcfRevelParams
 from .vcf_specs.annotations import VcfSpliceaiParams as VcfSpliceaiParams
 from .vcf_specs.annotations import VcfSvFreqParams as VcfSvFreqParams
@@ -379,6 +380,21 @@ def alphamissense(
     )
 
 
+def regulatory(
+    params: VcfRegulatoryParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Annotate GRCh38 variants with local SCREEN cCRE overlap."""
+    from wgsextract_cli.commands.vcf.regulatory import run_regulatory
+
+    return execute(
+        params, run_regulatory, progress=progress, cancel=cancel, check=check
+    )
+
+
 def pharmgkb(
     params: VcfPharmgkbParams,
     *,
@@ -438,6 +454,7 @@ __all__ = [
     "VcfPharmgkbParams",
     "VcfPhylopParams",
     "VcfPrepareParams",
+    "VcfRegulatoryParams",
     "VcfRevelParams",
     "VcfSnpParams",
     "VcfSpliceaiParams",
@@ -464,6 +481,7 @@ __all__ = [
     "pharmgkb",
     "phylop",
     "prepare",
+    "regulatory",
     "revel",
     "snp",
     "spliceai",

@@ -28,6 +28,7 @@ HG19_CHR1 = 249250621
 
 INFO_HEADERS = {
     "CLNSIG": '##INFO=<ID=CLNSIG,Number=.,Type=String,Description="s">',
+    "OLD_MULTIALLELIC": '##INFO=<ID=OLD_MULTIALLELIC,Number=1,Type=String,Description="Original record">',
     "CLNDN": '##INFO=<ID=CLNDN,Number=.,Type=String,Description="d">',
     "SpliceAI": '##INFO=<ID=SpliceAI,Number=.,Type=String,Description="s">',
     "AF": '##INFO=<ID=AF,Number=A,Type=Float,Description="f">',
@@ -235,29 +236,32 @@ def test_clinvar_picks_the_builds_file_and_filters_pathogenic_classes(tmp_path):
     library.mkdir(parents=True)
     sigs = ["Pathogenic", "Likely_pathogenic", "Pathogenic/Likely_pathogenic",
             "Conflicting_classifications_of_pathogenicity",
-            "Uncertain_significance"]  # fmt: skip
+            "Uncertain_significance", "Benign"]  # fmt: skip
     rows = [f"{100 * (i + 1)} v{i} A G . PASS . GT 0/1" for i in range(len(sigs))]
     for build, length in (("hg19", HG19_CHR1), ("hg38", HG38_CHR1)):
         # Only hg19's ClinVar has these classifications; hg38's calls all Benign.
         _vcf(
             library / f"clinvar_{build}.vcf.gz",
             [
-                f"{100 * (i + 1)} c{i} A G . . "
-                f"CLNSIG={sig if build == 'hg19' else 'Benign'};CLNDN=D{i} GT 0/1"
+                f"{100 * (i + 1)} {100 + i} A G . . "
+                f"CLNSIG={sig if build == 'hg19' else 'Benign'};CLNDN=D{i}"
+                + (";OLD_MULTIALLELIC=1|600|A|G,T|1" if i == 5 else "")
+                + " GT 0/1"
                 for i, sig in enumerate(sigs)
             ],
             contig="1",
             length=length,
-            info=("CLNSIG", "CLNDN"),
+            info=("CLNSIG", "CLNDN", "OLD_MULTIALLELIC"),
         )
     sample = _sample(tmp_path, rows, length=HG19_CHR1)
     reference_for_vcf(tmp_path / "lib" / "genomes" / "hg19.fa.gz", sample)
     outdir = tmp_path / "out"
     run_wgsextract("vcf", "clinvar", "--input", sample, "--ref",
                    str(tmp_path / "lib"), "--outdir", str(outdir))  # fmt: skip
-    assert _query(outdir / "clinvar_annotated.vcf.gz", "%ID:%CLNSIG:%CLNDN\n") == [
-        f"v{i}:{sig}:D{i}" for i, sig in enumerate(sigs)
-    ]
+    assert _query(
+        outdir / "clinvar_annotated.vcf.gz",
+        "%ID:%CLNSIG:%CLNDN:%WGSE_CLINVAR_GERMLINE\n",
+    ) == [f"v{i}:{sig}:D{i}:{sig if i != 5 else '.'}" for i, sig in enumerate(sigs)]
     assert _query(outdir / "clinvar_pathogenic.vcf.gz", "%ID\n") == ["v0", "v1", "v2"]
 
 

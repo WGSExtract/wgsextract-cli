@@ -51,12 +51,12 @@ def test_updated_own_bot_bug_gains_endorsement_without_losing_other_labels() -> 
     bug = seed_issue(api, f"(AI): {FLAKY}\n\nOld evidence")
     bug["labels"] = [
         {"name": name}
-        for name in ("bug", "ci-automation", "needs-owner", "machine-lin-mid")
+        for name in ("bug", "ci-automation", "needs-owner", "machine-test-host")
     ]
     IssueReports(api).issue("Flaky: same test", FLAKY, "New evidence")
     assert "endorsed" in bug["labels"]
     assert "needs-owner" not in bug["labels"]
-    assert "machine-lin-mid" in bug["labels"]
+    assert "machine-test-host" in bug["labels"]
     assert "New evidence" in bug["body"]
 
 

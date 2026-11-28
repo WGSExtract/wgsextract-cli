@@ -48,8 +48,15 @@ def test_pgx_and_lineage_labels_come_from_the_callers_evidence(sample):
 
 
 @needs_htslib
-def test_1287_report_shows_only_the_samples_research_audit(tmp_path: Path) -> None:
+@pytest.mark.parametrize("weighted", [False, True])
+def test_1287_1617_report_shows_the_samples_matched_research_statistic(
+    tmp_path: Path, weighted: bool
+) -> None:
     panel, vcf, _ = _audit_inputs(tmp_path, phase_set="1")
+    if weighted:
+        spec = json.loads(panel.read_text(encoding="utf-8"))
+        spec["defaults"]["qualify"][0]["weight"] = 0.5
+        panel.write_text(json.dumps(spec), encoding="utf-8")
     assert "panel_audit" not in pr.build_report(tmp_path, input_file=vcf)["sections"]
     # Only one of the two qualifying calls is in the matched coding region.
     exons = tmp_path / "exons.tsv"
@@ -103,7 +110,11 @@ def test_1287_report_shows_only_the_samples_research_audit(tmp_path: Path) -> No
     assert "newer_attempt_failed" in {w["code"] for w in section["warnings"]}
     (finding,) = section["findings"]
     assert finding["value"] == "2 qualifying allele copies"
-    null_scope = "1 qualifying allele copy across 1 eligible gene"
+    null_scope = (
+        "0.5 weighted ALT copies (1 qualifying allele copy) across 1 eligible gene"
+        if weighted
+        else "1 qualifying allele copy across 1 eligible gene"
+    )
     assert f"{null_scope}: empirical upper-tail p=" in finding["detail"]
     assert finding["evidence"]["file"] == "audit.panel_audit.json"
     assert finding["evidence"]["manifest"] == audit_manifest

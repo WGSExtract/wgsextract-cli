@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 from pathlib import Path
 
@@ -31,6 +32,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--agents", type=Path, default=Path.home() / "Library/LaunchAgents"
     )
-    parser.add_argument("--domain", default="user/502")
+    parser.add_argument("--domain", help="launchd domain (default: user/<current UID>)")
     args = parser.parse_args()
-    recover(args.agents, args.domain)
+    recover(args.agents, args.domain or f"user/{os.getuid()}")

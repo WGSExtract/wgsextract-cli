@@ -26,28 +26,37 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass, field
 from functools import partial
 from typing import TypeVar
 from urllib.parse import unquote
 
+from wgsextract_cli.core import _variant_table_protein as protein
 from wgsextract_cli.core import acmg
 from wgsextract_cli.core import clinical_evidence as ce
 from wgsextract_cli.core import variant_scores as scores
+from wgsextract_cli.core._variant_table_fields import NHOMALT_INFO as _NHOMALT_INFO
+from wgsextract_cli.core._variant_table_fields import POPMAX_INFO as _POPMAX_INFO
 from wgsextract_cli.core._variant_table_fields import csq_frequency as _csq_frequency
 from wgsextract_cli.core._variant_table_fields import fraction as _fraction
 from wgsextract_cli.core._variant_table_fields import per_allele as _per_allele
 from wgsextract_cli.core._variant_table_fields import to_float as _to_float
 from wgsextract_cli.core._variant_table_fields import to_int as _to_int
 from wgsextract_cli.core._variant_table_fields import value as _value
+from wgsextract_cli.core._variant_table_header import VcfHeader as VcfHeader
+from wgsextract_cli.core._variant_table_header import parse_header as parse_header
 from wgsextract_cli.core.csq_alleles import (
     allele_entries,
+    ann_for_allele,
     csq_entries,
     csq_for_allele,
-    for_allele,
     split_origin,
 )
+from wgsextract_cli.core.gnomad_fields import (
+    GNOMAD_FAF95,
+    gnomad_native_faf95,
+)
 from wgsextract_cli.core.imputed_vcf import IMPUTED_TAG
+from wgsextract_cli.core.regulatory_overlap import CCRE_CLASS
 from wgsextract_cli.core.table_writer import Column
 from wgsextract_cli.core.variant_confidence import SPLIT_TAG
 from wgsextract_cli.core.variant_depths import AD_TOTAL, allele_depths, count
@@ -55,9 +64,9 @@ from wgsextract_cli.core.vcf_alleles import allele_key
 
 TEXT, INTEGER, REAL = "TEXT", "INTEGER", "REAL"
 
-# The table's schema, in column order. Add a column by appending it here and
-# filling it in ``variant_rows``; the writers and docs read this list.
-COLUMNS: tuple[Column, ...] = (
+# The panel audit export uses this fixed prefix. Append new variant table
+# columns to COLUMNS and their values to indexed_variant_rows.
+PANEL_AUDIT_COLUMNS: tuple[Column, ...] = (
     Column("chrom", TEXT, "Chromosome, as named in the VCF (chr1 or 1)."),
     Column("pos", INTEGER, "1-based position of REF."),
     Column("ref", TEXT, "Reference allele."),
@@ -237,7 +246,17 @@ COLUMNS: tuple[Column, ...] = (
         "missing or incomplete.",
     ),
     *scores.SCORE_COLUMNS,
+    Column(
+        "gnomad_faf95",
+        REAL,
+        "Maximum gnomAD ancestry-group filtering allele frequency at 95% confidence "
+        "for this ALT (joint or the supplied standalone callset).",
+    ),
 )
+_CCRE_COLUMN = Column(
+    "ccre_class", TEXT, "Research only: SCREEN cCRE classes for this ALT."
+)
+COLUMNS = (*PANEL_AUDIT_COLUMNS, *protein.COLUMNS, _CCRE_COLUMN)
 COLUMN_NAMES = tuple(column.name for column in COLUMNS)
 Row = tuple[str | int | float | None, ...]
 
@@ -275,8 +294,6 @@ _UNRANKED = len(_SEVERITY)
 # VEP gnomAD frequency fields, preferred first: genomes (whole-genome
 # sequencing, like ours), then exomes, then the pre-v4 combined field.
 VEP_GNOMAD_AF = ("gnomADg_AF", "gnomADe_AF", "gnomAD_AF")
-_POPMAX_INFO = ("GNOMAD_POPMAX_AF", "AF_grpmax_joint", "AF_grpmax", "AF_popmax")
-_NHOMALT_INFO = ("GNOMAD_NHOMALT", "nhomalt_joint", "nhomalt")
 _POPMAX_CSQ = ("gnomAD_AF_grpmax_joint", "AF_grpmax_joint") + tuple(
     f"{source}_{field}"
     for source in ("gnomADg", "gnomADe", "gnomAD")
@@ -291,86 +308,7 @@ _NHOMALT_CSQ = (
 )
 _PHARMGKB_LEVELS = ("1A", "1B", "2A", "2B", "3", "4")
 
-_FIELD_LINE = re.compile(r"^##(INFO|FORMAT)=<(.*)>$")
-_ATTRIBUTE = re.compile(r'([^,=\s]+)=("(?:[^"\\]|\\.)*"|[^,]*)')
-_FORMAT_LIST = re.compile(r"Format:\s*(.+)$")
 _GT_SPLIT = re.compile(r"[/|]")
-
-
-@dataclass
-class VcfHeader:
-    """What the table needs from a VCF header."""
-
-    info_number: dict[str, str] = field(default_factory=dict)
-    format_number: dict[str, str] = field(default_factory=dict)
-    csq_fields: list[str] | None = None
-    ann_fields: list[str] | None = None
-    samples: list[str] = field(default_factory=list)
-    lines: list[str] = field(default_factory=list)
-    info_formats: dict[str, list[str]] = field(default_factory=dict)
-
-    @property
-    def annotations(self) -> list[str]:
-        """The annotation sources present, for provenance and the manifest."""
-        found = []
-        if self.csq_fields:
-            found.append("vep")
-        if self.ann_fields:
-            found.append("snpeff")
-        for name, keys in (
-            ("clinvar", ("CLNSIG",)),
-            ("gnomad", ("GNOMAD_AF", *_POPMAX_INFO, *_NHOMALT_INFO)),
-            ("pharmgkb", ("PHARMGKB",)),
-            ("confidence", ("WGSE_CONF",)),
-            ("sv_freq", ("SV_FREQ",)),
-            ("acmg", (acmg.CLASS,)),
-        ):
-            if any(key in self.info_number for key in keys):
-                found.append(name)
-        csq = set(self.csq_fields or ())
-        for name, score_keys in scores.ANNOTATIONS:
-            if any(key in self.info_number or key in csq for key in score_keys):
-                found.append(name)
-        return found
-
-
-def _subfield_names(description: str) -> list[str]:
-    """VEP's 'Format: Allele|Consequence|...' or SnpEff's
-    "Functional annotations: 'Allele | Annotation | ...'" as a list of names."""
-    match = _FORMAT_LIST.search(description)
-    names = match.group(1) if match else description.partition(":")[2]
-    return [name.strip(" '\"") for name in names.split("|")]
-
-
-def parse_header(lines: Iterable[str]) -> VcfHeader:
-    """Parse ``##`` header lines and the ``#CHROM`` line."""
-    header = VcfHeader()
-    for line in lines:
-        line = line.rstrip("\r\n")
-        header.lines.append(line)
-        if line.startswith("#CHROM"):
-            header.samples = line.split("\t")[9:]
-            continue
-        match = _FIELD_LINE.match(line)
-        if not match:
-            continue
-        kind, body = match.groups()
-        attributes = dict(_ATTRIBUTE.findall(body))
-        key, number = attributes.get("ID"), attributes.get("Number")
-        if key is None or number is None:
-            continue
-        if kind == "FORMAT":
-            header.format_number[key] = number
-            continue
-        header.info_number[key] = number
-        description = attributes.get("Description", "").strip('"')
-        if key == "CSQ":
-            header.csq_fields = _subfield_names(description)
-        elif key == "ANN":
-            header.ann_fields = _subfield_names(description)
-        elif _FORMAT_LIST.search(description):
-            header.info_formats[key] = _subfield_names(description)
-    return header
 
 
 def _format_fraction(
@@ -545,7 +483,7 @@ def variant_rows(
     sample doesn't carry (0/0 calls, the other ALT of a 0/1 multi-allelic
     site, no-calls) are left out.
     """
-    for row, _, _, _ in indexed_variant_rows(
+    for row, _, _, _, _, _ in indexed_variant_rows(
         records,
         header,
         sample_index=sample_index,
@@ -562,9 +500,15 @@ def indexed_variant_rows(
     sample_index: int | None = 0,
     carried_only: bool = True,
     pharmcat: Mapping[str, tuple[str, str]] | None = None,
-) -> Iterator[tuple[Row, int, int, str | None]]:
-    """Rows with record ordinal, 1-based ALT index and split provenance."""
+    clinvar_aggregate: bool = False,
+) -> Iterator[tuple[Row, int, int, str | None, str | None, bool]]:
+    """Rows with record/ALT indexes, split provenance and annotation evidence."""
     numbers = header.info_number
+    faf95_key = (
+        GNOMAD_FAF95 if GNOMAD_FAF95 in numbers else gnomad_native_faf95(numbers)
+    )
+    if faf95_key and numbers.get(faf95_key) != "A":
+        faf95_key = None
     csq_names = header.csq_fields or []
     ann_names = header.ann_fields or []
     scored = bool(scores.NAMES & set(header.annotations))
@@ -629,7 +573,6 @@ def indexed_variant_rows(
             if carried_only and zyg is not None and zyg not in CARRIED:
                 continue
             ann_spellings: tuple[str, ...] = (alt,)
-            pipe_spellings = ann_spellings
             index, n_alts = alt_index, len(alts)
             alt_fraction: float | None
             if ad_total and len(ad) == n_alts + 1 and ad[alt_index] <= ad_total:
@@ -642,23 +585,21 @@ def indexed_variant_rows(
             if origin is not None and split:
                 _, o_alts, index = origin
                 original_alt = o_alts[index - 1]
-                ann_spellings = (alt, original_alt)
-                if scored:
-                    # The normalized spelling can name another ALT's retained entries.
-                    pipe_spellings = (
-                        (original_alt,)
-                        if allele_key(alt) in map(allele_key, o_alts)
-                        else (original_alt, alt)
-                    )
+                # ANN has no provenance to distinguish a fresh annotation from
+                # a retained sibling's entry if they have the same spelling.
+                ann_spellings = (
+                    (original_alt,)
+                    if allele_key(alt) in map(allele_key, o_alts)
+                    else (original_alt, alt)
+                )
             csq_matches = csq_for_allele(csq_all, ref, alts, alt_index, origin)
             csq = pick_csq(csq_matches)
-            ann_matches = for_allele(
-                ann_all, "Allele", ann_spellings, index, n_alts, split=split
-            )
+            ann_matches = ann_for_allele(ann_all, ann_spellings)
             # SnpEff lists an allele's effects most severe first.
             ann = ann_matches[0] if ann_matches else {}
             picked = csq or {}
             csq_consequence = _value(picked.get("Consequence"))
+            ann_consequence = _value(ann.get("Annotation"))
             pgx = _per_allele(info.get("PHARMGKB"), numbers.get("PHARMGKB"), alt_index)
             pgx_gene, pgx_level, pgx_drugs = _pharmgkb(pgx)
             gene = (
@@ -670,6 +611,7 @@ def indexed_variant_rows(
             if gnomad is None:
                 gnomad = _csq_frequency(csq, *VEP_GNOMAD_AF)
             clnsig = _per_allele(info.get("CLNSIG"), numbers.get("CLNSIG"), alt_index)
+            direct_clnsig = clnsig
             if clnsig is None and csq:
                 clnsig = _value(csq.get("CLIN_SIG"))
             hgvs_p = _value(picked.get("HGVSp")) or _value(ann.get("HGVS.p"))
@@ -687,7 +629,7 @@ def indexed_variant_rows(
                 alt,
                 _rsids(vcf_id, csq, pgx),
                 gene,
-                csq_consequence or _value(ann.get("Annotation")),
+                csq_consequence or ann_consequence,
                 _value(picked.get("IMPACT")) or _value(ann.get("Annotation_Impact")),
                 _value(picked.get("HGVSc")) or _value(ann.get("HGVS.c")),
                 unquote(hgvs_p) if hgvs_p else None,  # VEP writes '=' as %3D
@@ -752,7 +694,7 @@ def indexed_variant_rows(
                             allele_entries,
                             info,
                             pipe_formats,
-                            pipe_spellings,
+                            ann_spellings,
                             refreshed=(scores.SPLICEAI, alt)
                             if split and scores.SPLICEAI_MATCH in info
                             else None,
@@ -762,5 +704,26 @@ def indexed_variant_rows(
                     if scored
                     else unscored
                 ),
+                _fraction(_per_allele(info.get(faf95_key), "A", alt_index))
+                if faf95_key
+                else None,
+                *protein.protein_fields(picked, ann, csq_consequence, ann_consequence),
+                _per_allele(info.get(CCRE_CLASS), numbers.get(CCRE_CLASS), alt_index),
             )
-            yield row, record_index, alt_index, info.get(SPLIT_TAG) if split else None
+            aggregate = (
+                ce.matched_germline_aggregate(
+                    info, numbers, n_alts, alt_index, clinical, direct_clnsig
+                )
+                if clinvar_aggregate
+                else None
+            )
+            yield (
+                row,
+                record_index,
+                alt_index,
+                info.get(SPLIT_TAG) if split else None,
+                aggregate,
+                "SVTYPE" in info
+                and _per_allele(info["SVTYPE"], numbers.get("SVTYPE"), alt_index)
+                is not None,
+            )

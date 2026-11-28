@@ -4,20 +4,23 @@
 from __future__ import annotations
 
 import argparse
+import os
 import plistlib
 import subprocess
 from pathlib import Path
-from typing import Any
+from xml.sax.saxutils import escape
 
 from local_repo import install as install_local_repo
 
 
-def install(root: Path, agents: Path, domain: str) -> None:
+def install(root: Path, agents: Path, domain: str, hosts: list[str]) -> None:
     agents.mkdir(parents=True, exist_ok=True)
     (root / "logs").mkdir(parents=True, exist_ok=True)
     install_local_repo(root)
     template = Path(__file__).with_name("server.plist.template").read_text("utf-8")
-    server = plistlib.loads(template.replace("@ROOT@", str(root)).encode())
+    server = plistlib.loads(template.replace("@ROOT@", escape(str(root))).encode())
+    for host in hosts:
+        server["ProgramArguments"].extend(["--allow-host", host])
     jobs = [server]
     for task, schedule in (
         ("backup", {"StartCalendarInterval": {"Hour": 3, "Minute": 15}}),
@@ -31,7 +34,7 @@ def install(root: Path, agents: Path, domain: str) -> None:
         ]
         if task == "update":
             args.extend(["--domain", domain])
-        job: dict[str, Any] = {
+        job = {
             "Label": "org.wgsextract.mockups." + task,
             "LimitLoadToSessionType": "Background",
             "ProgramArguments": args,
@@ -58,10 +61,19 @@ def install(root: Path, agents: Path, domain: str) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=Path, default=Path("/Users/wgse/mockup-server"))
+    parser.add_argument("--root", type=Path, default=Path.home() / "mockup-server")
     parser.add_argument(
         "--agents", type=Path, default=Path.home() / "Library/LaunchAgents"
     )
-    parser.add_argument("--domain", default="user/502")
+    parser.add_argument("--domain", help="launchd domain (default: user/<current UID>)")
+    parser.add_argument(
+        "--allow-host",
+        action="append",
+        required=True,
+        metavar="HOST:PORT",
+        help="HTTP authority allowed for the review server (repeat to add more)",
+    )
     args = parser.parse_args()
-    install(args.root, args.agents, args.domain)
+    install(
+        args.root, args.agents, args.domain or f"user/{os.getuid()}", args.allow_host
+    )
