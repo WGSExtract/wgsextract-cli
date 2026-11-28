@@ -98,7 +98,6 @@ await writeFile(path.join(bundleRoot, "state.json"), JSON.stringify({
     configFilePaths: { wgs_settings: config }, fieldValues: { bam_path: bam, vcf_path: vcf },
     uiMode: "advanced", setupExpanded: false, setupRun: { status: "succeeded", results: [] },
 }));
-const cliRuntime = await offlineCliAppDir(cli);
 const manager = createProcessManager({ maxOutputBytes: 1048576, maxErrorBytes: 65536 });
 const load = () => loadLocalizedBundle("en", path.join(root, "gui"), bundleRoot, bundleRoot);
 const loaded = await load();
@@ -115,6 +114,8 @@ const url = `http://127.0.0.1:${server.address().port}`;
 const browser = await chromium.launch({ executablePath: values.chromium, headless: true });
 const external = [];
 const errors = [];
+// Created right before the try so its finally removes it (requests that use it start inside).
+const cliRuntime = await offlineCliAppDir(cli);
 try {
     const context = await browser.newContext({ viewport: { width: 1440, height: 1100 }, serviceWorkers: "block" });
     await context.route("**/*", (route) => {
@@ -215,9 +216,12 @@ try {
     console.error(JSON.stringify({ errors, external }, null, 2));
     throw error;
 } finally {
-    await browser.close();
-    await manager.terminateAllProcesses();
-    server.closeAllConnections();
-    await new Promise((resolve) => server.close(resolve));
-    await cliRuntime.dispose();
+    try {
+        await browser.close();
+        await manager.terminateAllProcesses();
+        server.closeAllConnections();
+        await new Promise((resolve) => server.close(resolve));
+    } finally {
+        await cliRuntime.dispose();
+    }
 }

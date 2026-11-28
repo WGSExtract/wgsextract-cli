@@ -51,7 +51,6 @@ await writeFile(path.join(bundleRoot, "state.json"), JSON.stringify({
     configFilePaths: { wgs_settings: config }, fieldValues: { bam_path: fixtures.cram },
     uiMode: values["read-only"] ? "basic" : "advanced", setupExpanded: false, setupRun: { status: "succeeded", results: [] },
 }));
-const cliRuntime = await offlineCliAppDir(cli);
 const manager = createProcessManager({ maxOutputBytes: 1048576, maxErrorBytes: 65536 });
 const load = () => loadLocalizedBundle("en", path.join(root, "gui"), bundleRoot, bundleRoot);
 const loaded = await load();
@@ -74,6 +73,8 @@ const cancel = () => {
 };
 process.on("SIGTERM", cancel);
 process.on("SIGINT", cancel);
+// Created right before the try so its finally removes it (requests that use it start inside).
+const cliRuntime = await offlineCliAppDir(cli);
 try {
     child = spawn(process.execPath, [
         path.join(import.meta.dirname, values.memory ? "verify-viewer-memory.mjs" : "verify-viewer-library.mjs"),
@@ -96,10 +97,13 @@ try {
         assert.deepEqual((await readdir(fixtures.library, { recursive: true })).sort(), originalFiles, "Read-only verification must not create extraction outputs.");
     }
 } finally {
-    process.off("SIGTERM", cancel);
-    process.off("SIGINT", cancel);
-    await manager.terminateAllProcesses();
-    server.closeAllConnections();
-    await new Promise((resolve) => server.close(resolve));
-    await cliRuntime.dispose();
+    try {
+        process.off("SIGTERM", cancel);
+        process.off("SIGINT", cancel);
+        await manager.terminateAllProcesses();
+        server.closeAllConnections();
+        await new Promise((resolve) => server.close(resolve));
+    } finally {
+        await cliRuntime.dispose();
+    }
 }
