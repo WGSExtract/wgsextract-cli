@@ -5,6 +5,12 @@ ones it lacks; `microarray` searches here last. A body file holds one marker per
 line (rsID, chromosome, position, tab-separated) and is gzipped; the head file
 is written as-is at the top of the output.
 
+Source rights for the exact vendor marker compilations, template headers and
+corrections are **unspecified**. The donations documented below establish
+provenance, not permission from the vendors to redistribute their material.
+The openSNP archive's CC0 grant covers that source, not a separate vendor grant.
+See the [source-rights record](https://github.com/WGSExtract/wgsextract-cli/blob/main/src/wgsextract_cli/assets/resource_terms/rights.json).
+
 Most bodies are stored as a delta (`NAME.<suffix>.delta.gz`) against another
 shipped body, which keeps the wheel small: its first line is `#base<TAB>BASE`,
 then `=N` copies BASE's next N rows, `-N` skips them and

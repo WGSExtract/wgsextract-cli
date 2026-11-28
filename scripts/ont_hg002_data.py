@@ -180,10 +180,12 @@ def _write_provenance(outdir: Path, provenance: dict) -> None:
         print(f"{p}: {p.stat().st_size} bytes")
 
 
-def _read_provenance(selection: str) -> dict:
+def _read_provenance(selection: str) -> dict[str, str]:
     return {
         "url": CRAM_URL,
-        "license": "CC BY 4.0 (Oxford Nanopore Technologies open data)",
+        "license": "CC BY-NC 4.0 in the current ONT registry; historical giab_2023.05 grant unspecified",
+        "license_url": "https://registry.opendata.aws/ont-open-data/",
+        "attribution": "Oxford Nanopore Technologies Open Data, GIAB HG002 (giab_2023.05)",
         "basecaller": "dna_r10.4.1_e8.2_400bps_sup@v4.0.0",
         "selection": "primary alignments overlapping the window, trimmed to "
         "their aligned span inside it, reads whose SHA-256 of the name is "

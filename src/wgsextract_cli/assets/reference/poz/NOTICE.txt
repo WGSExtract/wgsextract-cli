@@ -4,10 +4,12 @@ Source: WGSExtract/WGSExtract-Dev, snapshot
 108d1ad395e613552ad4dc01acfb1ff0de1ad08e (files introduced by 3eb23a1).
 https://github.com/WGSExtract/WGSExtract-Dev/tree/108d1ad395e613552ad4dc01acfb1ff0de1ad08e/reference
 
-The source repository distributes these files under its GNU GPL version 3
-LICENSE, compatible with this application's GPL-3.0-or-later. Preserve this
-notice and the GPL license when redistributing the presets. No separate license
-or conflicting terms accompany the BED files.
+The intermediate repository carries a GNU GPL version 3 LICENSE. Rights in
+the underlying region designs and David Vance's HG38 spreadsheet are
+unspecified: the source snapshot and its README do not establish an upstream
+grant. Keep this attribution; do not treat the repository GPL as clearance
+for third-party material. This notice does not cover the separate BigY capture
+BED.
 
 Original files and SHA256:
 CombBED_McDonald_Poznik_Merged_hg37.bed
