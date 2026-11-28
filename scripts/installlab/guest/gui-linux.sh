@@ -123,7 +123,8 @@ app_actions() {
     if [ ! -f "$runner" ]; then
         runner="$APP_DIR/platform/typescript/dist/web/src/server/bundle-test-cli.js"
     fi
-    GUI_FOR_CLI_APP_SUPPORT_NAME="$APP_ID" "$APP_DIR/node/bin/node" \
+    WGSEXTRACT_GUI_APP_DATA_NAME="${APP_DATA##*/}" \
+        GUI_FOR_CLI_APP_SUPPORT_NAME="$APP_ID" "$APP_DIR/node/bin/node" \
         "$runner" \
         --plan "$HERE/gui-plan.json" --workspace "$WORKSPACE" ${USERS_ARGS:+"$USERS_ARGS" "$USERS_WORKSPACE"} \
         --report "$R/bundle-report.json" --log "$R/bundle-test.log" \

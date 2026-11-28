@@ -117,17 +117,6 @@
       ]
     },
     {
-      "id": "reference-dropdown-microarray",
-      "kind": "dataSource",
-      "pageID": "microarray",
-      "sectionID": "microarray-inputs",
-      "controlID": "ref_fasta",
-      "minimumOptions": 1,
-      "requiredOutput": [
-        "hg19 (Yoruba"
-      ]
-    },
-    {
       "id": "reference-dropdown-settings",
       "kind": "dataSource",
       "pageID": "settings",
