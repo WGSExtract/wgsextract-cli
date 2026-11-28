@@ -11,6 +11,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from wgsextract_cli.core import sample_workspace
+from wgsextract_cli.core.managed_binaries import license_required
 from wgsextract_cli.core.optional_tools import installable, missing_tools
 from wgsextract_cli.core.ref_library.needs import MissingReference, missing_references
 from wgsextract_cli.core.results import current_result, human_output
@@ -64,13 +65,15 @@ def check_command(argv: list[str]) -> list[MissingReference]:
 
 def _missing_tool(tool: str, args: argparse.Namespace) -> MissingReference:
     """A missing optional tool, installed by ``deps install`` when it can be;
-    otherwise the user installs it."""
+    otherwise the user installs it. A tool whose licence must be accepted is
+    never installed for the user here (the Tools page asks first)."""
+    automatic = installable(tool) and not license_required(tool)
     return MissingReference(
         id=tool,
         kind="tool",
         name=tool,
         reason=str(getattr(args, "_command", "")),
-        install_arguments=["deps", "install", tool] if installable(tool) else None,
+        install_arguments=["deps", "install", tool] if automatic else None,
     )
 
 

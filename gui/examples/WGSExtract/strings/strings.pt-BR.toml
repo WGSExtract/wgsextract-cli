@@ -1277,6 +1277,11 @@
 "columns.tools.tool-management.tools.name.title" = "Ferramenta"  # i18n-source-hash:9a830c71
 "columns.tools.tool-management.tools.details.title" = "Versão ou observação"  # i18n-source-hash:394721b1
 "columns.tools.tool-management.tools.environment.title" = "Ambiente Pixi"  # i18n-source-hash:56378800
+"actions.tools.tool-management.tool-install-licensed.confirm.confirmButtonTitle" = "Aceitar e instalar"  # i18n-source-hash:e436e842
+"actions.tools.tool-management.tool-install-licensed.confirm.message" = "{{row.name}} é licenciado sob a {{row.license}}: {{row.licenseTerms}}. Leia-a em {{row.licenseUrl}}. Instale-o somente se aceitar estes termos."  # i18n-source-hash:d089e2ea
+"actions.tools.tool-management.tool-install-licensed.confirm.title" = "Aceitar a licença de {{row.name}}?"  # i18n-source-hash:149ec63b
+"actions.tools.tool-management.tool-install-licensed.title" = "Instalar"  # i18n-source-hash:fd6c3ebf
+"actions.tools.tool-management.tool-install-licensed.tooltip" = "Baixa e instala esta ferramenta depois que você aceitar a licença dela (wgsextract deps install --accept-license)."  # i18n-source-hash:bc531c87
 "actions.tools.tool-management.tool-install.title" = "Instalar"  # i18n-source-hash:fd6c3ebf
 "actions.tools.tool-management.tool-install.tooltip" = "Baixa e instala esta ferramenta opcional (wgsextract deps install)."  # i18n-source-hash:3601154c
 "actions.tools.tool-management.tool-uninstall.title" = "Desinstalar"  # i18n-source-hash:a735da1d

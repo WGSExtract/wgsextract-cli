@@ -76,8 +76,11 @@ INSTALL_HINTS = {
     "plink2": "Download PLINK 2 for your system from "
     "https://www.cog-genomics.org/plink/2.0/ and put plink2 on PATH. "
     "It is optional, used only by score pgs --plink2-check.",
-    "dorado": "Dorado is ONT's basecaller and isn't installed with WGS Extract: "
-    "download the release for your system from "
+    "dorado": "Dorado is ONT's basecaller, licensed under the Oxford Nanopore "
+    "Technologies PLC. Public License Version 2.0 for research use only. "
+    "On Linux x64 or ARM64, Apple silicon Macs and Windows x64, install it "
+    "from the Tools page or with 'wgsextract deps install dorado "
+    "--accept-license'. Elsewhere, download the release for your system from "
     "https://github.com/nanoporetech/dorado#installation, unpack it and put its "
     "bin folder on PATH, or set dorado_executable in config.toml (or pass "
     "basecall --dorado-path).",
@@ -345,6 +348,7 @@ PIXI_TOOL_ENVS = {
     "modkit": "modkit",
     "verifybamid2": "verifybamid2",
     "somalier": "somalier",
+    "plink2": "plink2",
     "whatshap": "phasing",
     "longphase": "phasing",
     "GLIMPSE2_phase": "imputation",
@@ -357,7 +361,7 @@ PIXI_TOOL_ENVS = {
     "cyrius_python": "cyrius",
 }
 # Environments without a Python of their own: their tools are probed from here.
-PIXI_ENVS_WITHOUT_PYTHON = frozenset({"deepvariant", "delly", "java17"})
+PIXI_ENVS_WITHOUT_PYTHON = frozenset({"deepvariant", "delly", "java17", "plink2"})
 
 
 # Interpreters only their own Pixi environment provides (its packages matter).

@@ -120,10 +120,17 @@ denominator, including unsupported or unmapped rows. No matched variants
 produces a null score rather than a misleading zero.
 
 `--plink2-check` optionally validates the **same matched calls' arithmetic**
-with an already-installed `plink2`, without mean-imputation. It is not an
+with `plink2`, without mean-imputation. It is not an
 independent check of the matching policy. The JSON includes the PLINK sum,
 difference and text-rounding bound: PLINK's public score report uses six
 significant digits, so comparison allows that rounding plus `1e-6`.
+
+PLINK 2 is optional. `wgsextract deps install plink2` (the Tools page's
+Install button) gets it: on Linux and macOS from Bioconda into its own Pixi
+environment, `plink2`; on Windows x64 by downloading the author's official
+build, pinned by version and SHA-256, into `plink2` under the managed tools
+folder (`jar_directory`). `wgsextract deps uninstall plink2` removes either.
+A `plink2` already on PATH is used first.
 
 ## Outputs and percentiles
 

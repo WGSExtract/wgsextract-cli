@@ -6,9 +6,13 @@ pbmm2, pbsv and sniffles in ``pacbio``) is installed with
 ``pixi install --locked -e <env>`` and removed with ``pixi clean -e <env>``,
 which removes every tool that environment provides. Tools in the ``default``
 environment come with the CLI itself and can't be installed or removed on
-their own; tools without an environment (plink2, dorado) are the user's to
-install (``INSTALL_HINTS``), as are tools whose environment has no build for
-this platform but that ship a native release (fastvep, wgse-deepvariant).
+their own. A Java tool (discvrseq) installs as one verified JAR, and a tool
+whose environment has no build for this platform may install from its pinned,
+verified official release (``managed_binaries``: plink2 on Windows, and dorado
+once its research-only licence is accepted), both under ``managed_jar_dir()``.
+Other tools without an environment are the user's to install
+(``INSTALL_HINTS``), as are tools whose environment has no build for this
+platform but that ship a native release (fastvep, wgse-deepvariant).
 """
 
 from __future__ import annotations
@@ -23,7 +27,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from wgsextract_cli.core import runtime
+from wgsextract_cli.core import managed_binaries, runtime
+from wgsextract_cli.core.managed_binaries import license_fields, managed_binary
 from wgsextract_cli.core.native_support import tool_unsupported_reason
 from wgsextract_cli.core.pixi_tools import (
     can_manage_environments,
@@ -119,7 +124,7 @@ def installable(tool: str) -> bool:
     """Whether ``deps install`` can install ``tool``: either a managed JAR tool
     or a tool with a Pixi environment of its own that this installation can
     manage and whose lockfile doesn't rule this platform out."""
-    if tool in MANAGED_JAR_TOOLS:
+    if tool in MANAGED_JAR_TOOLS or managed_binary(tool):
         return _unavailable_reason(tool) is None
     return (
         own_environment(tool) is not None
@@ -220,6 +225,28 @@ def tool_row(row: dict[str, Any], group: str) -> dict[str, Any]:
             "can_uninstall": can_uninstall,
             "preinstalled": False,
             "note": note,
+        }
+    binary = managed_binary(tool) if group == "optional" else None
+    if binary is not None:
+        can_install = status == MISSING and installable(tool)
+        can_uninstall = managed_binaries.is_managed(tool)
+        managed_env = "jartools" if (can_install or can_uninstall) else None
+        note = unavailable
+        if can_install:
+            note = managed_binaries.describe(tool, binary)
+        elif status == MISSING:
+            note = INSTALL_HINTS.get(tool)
+        return row | {
+            "group": group,
+            "status": status,
+            "environment": managed_env,
+            "environment_tools": [tool] if managed_env else [],
+            "can_install": can_install,
+            "can_uninstall": can_uninstall,
+            "preinstalled": False,
+            "note": note,
+            "license_acceptance_required": can_install and binary.license is not None,
+            **license_fields(binary),
         }
     can_install = status == MISSING and env is not None and installable(tool)
     note = unavailable
@@ -370,12 +397,18 @@ def _uninstall_managed_jar(tool: str) -> dict[str, Any]:
     }
 
 
-def install(tool: str) -> dict[str, Any]:
-    """Download and install the optional tool (managed JAR or Pixi environment)."""
+def install(tool: str, *, accept_license: bool = False) -> dict[str, Any]:
+    """Download and install the optional tool (managed JAR, managed release or
+    Pixi environment). A release under a restrictive licence needs
+    ``accept_license``."""
     if spec := MANAGED_JAR_TOOLS.get(tool):
         if reason := _unavailable_reason(tool):
             raise WGSExtractError(reason)
         return _install_managed_jar(tool, spec)
+    if binary := managed_binary(tool):
+        if reason := _unavailable_reason(tool):
+            raise WGSExtractError(reason)
+        return managed_binaries.install(tool, binary, accept_license=accept_license)
     env = _environment_for(tool)
     if reason := _unavailable_reason(tool):
         raise WGSExtractError(reason)
@@ -406,6 +439,8 @@ def uninstall(tool: str) -> dict[str, Any]:
     """Remove a managed JAR or the Pixi environment that provides ``tool``."""
     if tool in MANAGED_JAR_TOOLS:
         return _uninstall_managed_jar(tool)
+    if binary := managed_binary(tool):
+        return managed_binaries.uninstall(tool, binary)
     env = _environment_for(tool)
     if _runs_cli(env):
         raise WGSExtractError(
