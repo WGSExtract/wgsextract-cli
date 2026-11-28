@@ -15,8 +15,10 @@ when there is one.
 built for this platform included, with its ``group`` ("mandatory" or
 "optional"), ``status`` ("installed", "missing" or "unavailable"), its own
 Pixi ``environment`` and the ``environment_tools`` it provides,
-``can_install`` and ``can_uninstall``, and a ``note`` (how to install it
-yourself, or why it can't be had). It doesn't fail on a missing tool.
+``can_install`` and ``can_uninstall``, ``preinstalled`` (an optional tool
+that ships in the CLI's own environment, so it can't be removed on its
+own), and a ``note`` (how to install it yourself, or why it can't be had).
+It doesn't fail on a missing tool.
 
 ``ready`` reports whether a command line (``command_line``, as its argv
 after ``wgsextract``) can run on this computer without the network: each

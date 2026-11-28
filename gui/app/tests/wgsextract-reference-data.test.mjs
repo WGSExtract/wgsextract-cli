@@ -105,3 +105,21 @@ test("reference-data transform maps installed and missing resources with sizes, 
   assert.equal(byId.get("dbsnp-hg38").advancedOnly, undefined);
   assert.equal(byId.get("dbsnp-hg19").advancedOnly, undefined);
 });
+
+test("Reference Data rows list installed resources first, then missing ones, each alphabetical", () => {
+  const rows = items({ details: {
+    referenceLibrary: { path: path.resolve("../out") },
+    bootstrap: { installed: false },
+    geneMap: { installed: true },
+    pharmgkb: { installed: true },
+    annotations: { revel: { hg38: { installed: true } } },
+  } }).items;
+  const installed = rows.filter((row) => row.status !== "missing").map((row) => row.title);
+  const missing = rows.filter((row) => row.status === "missing").map((row) => row.title);
+  const alphabetical = (titles) => [...titles].sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }));
+
+  assert.deepEqual(rows.map((row) => row.title), [...installed, ...missing]);
+  assert.deepEqual(installed, ["Gene Map", "PharmGKB Annotations", "REVEL"]);
+  assert.deepEqual(missing, alphabetical(missing));
+  assert.ok(missing.includes("Library Bootstrap"));
+});

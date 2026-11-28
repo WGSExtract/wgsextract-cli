@@ -1,6 +1,6 @@
 import { api } from "./api.js";
 import { bindGenomeViewerEvents } from "./genome-viewer-entry.js";
-import { configValueKey, splitPathList } from "../../../shared/rendering.js";
+import { configValueKey, rowMatchesFilter, splitPathList } from "../../../shared/rendering.js";
 import { installGlobalBundleLoadHandler, loadBundleFromPicker, type Bootstrap } from "./bundle-loading.js";
 import { bindCertificationLinks } from "./certification-links.js";
 import { normalizeColorTheme, normalizeIconSet } from "./icons.js";
@@ -315,6 +315,21 @@ export function bindEvents(bootstrap: Bootstrap) {
         state.isSidebarVisible = !state.isSidebarVisible;
         localStorage.setItem("wgsextractGui.sidebarVisible", state.isSidebarVisible ? "true" : "false");
         scheduleRender();
+    });
+    // Filters a table in place: re-rendering would take focus from the box.
+    elements<HTMLInputElement>("[data-library-filter]").forEach((input) => {
+        input.addEventListener("input", () => {
+            const key = requiredDataset(input, "libraryFilter");
+            state.libraryFilters.set(key, input.value);
+            const table = input.closest(".library-list");
+            let shown = 0;
+            table?.querySelectorAll<HTMLTableRowElement>("tr[data-filter-text]").forEach((row) => {
+                row.hidden = !rowMatchesFilter(row.dataset.filterText ?? "", input.value);
+                shown += row.hidden ? 0 : 1;
+            });
+            const none = table?.querySelector<HTMLElement>("[data-library-no-matches]");
+            if (none) none.hidden = shown > 0;
+        });
     });
     elements("[data-section-toggle]").forEach((button) => {
         button.addEventListener("click", () => {

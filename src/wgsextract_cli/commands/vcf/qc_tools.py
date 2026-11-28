@@ -8,6 +8,7 @@ import os
 import re
 import subprocess
 import tempfile
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
 
@@ -18,7 +19,7 @@ from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
-from wgsextract_cli.core.paths import absolute_path, expand_path
+from wgsextract_cli.core.paths import absolute_path, append_suffix, expand_path
 from wgsextract_cli.core.ref_library.assets import (
     is_fasta_path,
     resolve_reference_library,
@@ -34,7 +35,8 @@ from wgsextract_cli.core.utils import (
     get_resource_defaults,
     run_command,
 )
-from wgsextract_cli.core.variant_files import verify_paths_exist
+from wgsextract_cli.core.variant_files import ensure_vcf_indexed, verify_paths_exist
+from wgsextract_cli.core.variant_sample import indexed_sample_vcf
 from wgsextract_cli.core.vcf_reference import identify_vcf_reference
 
 from .._extract_helpers import cleanup_files
@@ -95,6 +97,44 @@ def _variantqc_label(path: Path, used: set[str]) -> str:
     return label
 
 
+def _fresh_tbi(vcf: Path) -> bool:
+    tbi = append_suffix(vcf, ".tbi")
+    return tbi.is_file() and tbi.stat().st_mtime_ns >= vcf.stat().st_mtime_ns
+
+
+def _variantqc_input(vcf: Path, outdir: Path, cleanup: ExitStack) -> str:
+    """``vcf``, or an indexed working copy, with the fresh ``<vcf>.tbi`` GATK
+    looks for: it reads neither CSI nor a ``sample.vcf.tbi`` index. An
+    unindexed bgzipped VCF is indexed beside itself; any other input (plain,
+    BCF, CSI- or short-name-indexed, or in a read-only folder) is copied."""
+    if vcf.suffix.lower() in {".gz", ".bgz"}:
+        try:
+            ensure_vcf_indexed(vcf)
+        except WGSExtractError as e:
+            # As prepare_input_vcf: only a failed tabix run or write falls
+            # back to a copy. A missing tool, a VCF that changed while being
+            # indexed (an old TBI could then look fresh) or a shared index
+            # name stops.
+            failure = (OSError, subprocess.SubprocessError)
+            if isinstance(e, MissingDependencyError) or not isinstance(
+                e.__cause__, failure
+            ):
+                raise
+            logging.info(f"Using a working copy: {e}")
+        if _fresh_tbi(vcf):
+            return str(vcf)
+    logging.info(f"Preparing an indexed working copy of {vcf}...")
+    copy = Path(
+        indexed_sample_vcf(str(vcf), None, str(outdir), cleanup, trim_alt_alleles=False)
+    )
+    if not _fresh_tbi(copy):
+        raise WGSExtractError(
+            f"{vcf.name} has a contig too long for a TBI index, which DISCVRSeq "
+            "VariantQC requires."
+        )
+    return str(copy)
+
+
 def run_variantqc(params: VcfVariantQcParams) -> None:
     """Run DISCVRSeq VariantQC to produce an interactive HTML VCF QC report."""
     input_file = require_vcf_input(params)
@@ -138,35 +178,34 @@ def run_variantqc(params: VcfVariantQcParams) -> None:
     outdir.mkdir(parents=True, exist_ok=True)
     out_html = outdir / f"{_vcf_stem(vcf_path)}.variantqc.html"
 
-    cmd = [
-        *cmd_base,
-        "VariantQC",
-        "-R",
-        resolved_ref,
-    ]
-    if len(all_vcfs) == 1:
-        cmd.extend(["-V", str(all_vcfs[0])])
-    else:
-        used_labels: set[str] = set()
-        for path in all_vcfs:
-            cmd.extend([f"-V:{_variantqc_label(path, used_labels)}", str(path)])
-    cmd.extend(["-O", str(out_html)])
-    if params.pedigree:
-        ped = os.fspath(params.pedigree)
+    ped = os.fspath(params.pedigree) if params.pedigree else None
+    if ped:
         verify_paths_exist({"--pedigree": ped})
-        cmd.extend(["-ped", ped])
 
-    logging.info(
-        "Running DISCVRSeq VariantQC on %d VCF(s) (%s) -> %s",
-        len(all_vcfs),
-        ", ".join(p.name for p in all_vcfs),
-        out_html,
-    )
-    try:
-        with cleanup_files(on_failure=[str(out_html)]):
-            run_command(cmd)
-    except (OSError, subprocess.SubprocessError) as e:
-        raise WGSExtractError(f"DISCVRSeq VariantQC failed: {e}") from e
+    with ExitStack() as cleanup:
+        inputs = [_variantqc_input(path, outdir, cleanup) for path in all_vcfs]
+        cmd = [*cmd_base, "VariantQC", "-R", resolved_ref]
+        if len(all_vcfs) == 1:
+            cmd.extend(["-V", inputs[0]])
+        else:
+            used_labels: set[str] = set()
+            for path, vcf_arg in zip(all_vcfs, inputs, strict=True):
+                cmd.extend([f"-V:{_variantqc_label(path, used_labels)}", vcf_arg])
+        cmd.extend(["-O", str(out_html)])
+        if ped:
+            cmd.extend(["-ped", ped])
+
+        logging.info(
+            "Running DISCVRSeq VariantQC on %d VCF(s) (%s) -> %s",
+            len(all_vcfs),
+            ", ".join(p.name for p in all_vcfs),
+            out_html,
+        )
+        try:
+            with cleanup_files(on_failure=[str(out_html)]):
+                run_command(cmd)
+        except (OSError, subprocess.SubprocessError) as e:
+            raise WGSExtractError(f"DISCVRSeq VariantQC failed: {e}") from e
 
     if not out_html.is_file():
         raise WGSExtractError(f"DISCVRSeq VariantQC produced no report at {out_html}.")
