@@ -16,6 +16,7 @@ from fnmatch import fnmatchcase
 from functools import cache
 from http.client import IncompleteRead, RemoteDisconnected
 from pathlib import Path
+from socket import EAI_AGAIN, gaierror
 from ssl import SSLEOFError
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -122,7 +123,15 @@ def github_assets(owner: str, repo: str, tag: str) -> dict[str, dict[str, Any]]:
 def _transient(error: OSError) -> bool:
     if isinstance(error, HTTPError):
         return error.code == 429 or 500 <= error.code < 600
-    reason = error.reason if isinstance(error, URLError) else error
+    reason: str | BaseException | None = (
+        error.reason if isinstance(error, URLError) else error
+    )
+    if isinstance(reason, str):
+        reason = error.__cause__  # Some urllib versions stringify FTP failures.
+    if isinstance(reason, gaierror):
+        return reason.errno == EAI_AGAIN
+    if isinstance(error, URLError) and isinstance(reason, EOFError):
+        return True  # ftplib uses EOFError when the server closes before replying.
     return isinstance(
         reason,
         (

@@ -7,6 +7,7 @@ import sys
 import threading
 from collections.abc import Iterator
 from dataclasses import dataclass
+from ftplib import error_perm
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from ssl import SSLCertVerificationError, SSLEOFError
@@ -179,4 +180,33 @@ def test_1692_tls_disconnect_retries_but_certificate_failure_does_not(
 
     with pytest.raises(URLError):
         checks.check_url("https://127.0.0.1:1/resource", {})
+    assert slept == expected_delays
+
+
+@pytest.mark.parametrize(
+    ("reason", "ftp", "expected_delays"),
+    [
+        (socket.gaierror(socket.EAI_AGAIN, "temporary DNS failure"), False, [5, 20]),
+        (socket.gaierror(socket.EAI_NONAME, "unknown host"), False, []),
+        (ConnectionRefusedError("connection refused"), True, [5, 20]),
+        (EOFError(), True, [5, 20]),
+        (error_perm("550 File unavailable"), True, []),
+    ],
+)
+def test_1692_only_temporary_dns_and_ftp_transport_failures_retry(
+    reason: Exception,
+    ftp: bool,
+    expected_delays: list[float],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    slept: list[float] = []
+    monkeypatch.setattr(checks, "time", SimpleNamespace(sleep=slept.append))
+    error = URLError(f"ftp error: {reason}" if ftp else reason)
+    if ftp:
+        error.__cause__ = reason
+    monkeypatch.setattr(checks, "urlopen", Mock(side_effect=error))
+
+    scheme = "ftp" if ftp else "https"
+    with pytest.raises(URLError):
+        checks.check_url(f"{scheme}://127.0.0.1:1/resource", {})
     assert slept == expected_delays
