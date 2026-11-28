@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { chmod, cp, mkdir, mkdtemp, readFile, realpath, readdir, rm, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { chmod, cp, mkdir, mkdtemp, readFile, realpath, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -8,8 +9,11 @@ import { gzipSync } from "node:zlib";
 import test from "node:test";
 import { exampleBundleCopy } from "./example-bundle.mjs";
 import { currentSetupPlatform } from "../dist/shared/setup-platforms.js";
-import { forgetSetupWithMissingTools, runInitialSetupIfNeeded, runSetup, runSetupStep, runUninstall } from "../dist/web/src/server/setup-runner.js";
+import { forgetSetupWithStaleTools, runInitialSetupIfNeeded, runSetup, runSetupStep, runUninstall } from "../dist/web/src/server/setup-runner.js";
 import { createProcessManager } from "../dist/web/src/server/process-runner.js";
+
+const setupPowerShell = process.platform === "win32" ? "powershell.exe" : "pwsh";
+const setupPowerShellAvailable = !spawnSync(setupPowerShell, ["-NoProfile", "-Command", "exit 0"]).error;
 
 async function installRuntimeMarker(appDir) {
   const metadata = path.join(appDir, ".pixi", "envs", "default", "conda-meta");
@@ -828,9 +832,10 @@ function copyBundleWithoutRuntime(source, destination) {
  * app's data folder: run against the real one, it killed a user's running job and deleted their CLI runtime.
  */
 async function withIsolatedAppData(root, run) {
-  const previous = { LOCALAPPDATA: process.env.LOCALAPPDATA, XDG_DATA_HOME: process.env.XDG_DATA_HOME };
+  const previous = { LOCALAPPDATA: process.env.LOCALAPPDATA, XDG_DATA_HOME: process.env.XDG_DATA_HOME, HOME: process.env.HOME };
   process.env.LOCALAPPDATA = path.join(root, "LocalAppData");
   process.env.XDG_DATA_HOME = path.join(root, "data");
+  if (process.platform === "darwin") process.env.HOME = root;
   try {
     const { appSupportDirectory } = await import("../dist/web/src/server/paths.js");
     return await run(appSupportDirectory());
@@ -1049,12 +1054,148 @@ test("a finished setup whose installed tools are gone is forgotten, so the app o
   await writeFile(state, JSON.stringify({ setupRun: { status: "ok", results: [] } }));
   await mkdir(path.dirname(tool), { recursive: true });
   await writeFile(tool, "");
-  assert.equal(await forgetSetupWithMissingTools(manifest, root), false);
+  assert.equal(await forgetSetupWithStaleTools(manifest, root), false);
   assert.deepEqual(JSON.parse(await readFile(state, "utf8")).setupRun, { status: "ok", results: [] });
 
   await rm(tool);
-  assert.equal(await forgetSetupWithMissingTools(manifest, root), true);
+  assert.equal(await forgetSetupWithStaleTools(manifest, root), true);
   assert.equal(JSON.parse(await readFile(state, "utf8")).setupRun, null);
   // Nothing to forget once setup hasn't run.
-  assert.equal(await forgetSetupWithMissingTools(manifest, root), false);
+  assert.equal(await forgetSetupWithStaleTools(manifest, root), false);
+});
+
+test("#1686 upgrading the CLI after a completed 0.8.10 Setup", async (t) => {
+  const bundle = await exampleBundleCopy(t);
+  const state = path.join(bundle, "state.json");
+  const pin = path.join(bundle, "scripts", "wgsextract-release-tag.txt");
+  const { loadManifestFromRoot } = await import("../dist/web/src/server/bundle-loader.js");
+  await withIsolatedAppData(path.dirname(bundle), async (appData) => {
+    const app = path.join(appData, "runtime", "wgsextract-cli", "app");
+    const bin = path.join(path.dirname(app), "bin");
+    await mkdir(app, { recursive: true });
+    await mkdir(bin, { recursive: true });
+    await writeFile(path.join(app, "pixi.toml"), '[workspace]\nversion = "0.8.10"\n');
+    await writeFile(path.join(bin, process.platform === "win32" ? "wgsextract.cmd" : "wgsextract"), "");
+    await writeFile(state, JSON.stringify({ setupRun: { status: "ok", results: [] } }));
+
+    await writeFile(pin, "v0.8.10\n");
+    assert.equal(await forgetSetupWithStaleTools(await loadManifestFromRoot(bundle), bundle), false);
+    await writeFile(pin, "v0.9.0\n");
+    const upgraded = await loadManifestFromRoot(bundle);
+    assert.equal(await forgetSetupWithStaleTools(upgraded, bundle), true);
+    assert.equal(JSON.parse(await readFile(state, "utf8")).setupRun, null);
+
+    await writeFile(path.join(app, ".wgsextract-release-tag"), "v0.9.0\n");
+    await writeFile(state, JSON.stringify({ setupRun: { status: "ok", results: [] } }));
+    assert.equal(await forgetSetupWithStaleTools(upgraded, bundle), false);
+  });
+
+  await t.test("Windows Setup launches the new CLI after upgrade and restores the old CLI on failure or cancellation", {
+    skip: !setupPowerShellAvailable,
+  }, async (t) => {
+    for (const outcome of ["upgrade", "failure", "cancellation"]) {
+      await t.test(outcome, async (t) => {
+        const root = await mkdtemp(path.join(tmpdir(), "wgse-upgrade-"));
+        t.after(() => rm(root, { force: true, recursive: true }));
+        const runtime = path.join(root, "runtimé");
+        const bin = path.join(runtime, "bin");
+        const app = path.join(runtime, "app");
+        const usersWorkspace = path.join(root, "users workspace");
+        const config = path.join(usersWorkspace, "config.toml");
+        const pixiBase = path.join(root, "pixí data");
+        const envs = path.join(pixiBase, "envs");
+        const prefix = path.join(envs, "fixture", "envs", "default");
+        const archive = path.join(root, "archive.zip");
+        const fixture = path.join(root, "source");
+        const pixi = path.join(root, "pixi.ps1");
+        const oldFile = path.join(app, "old-source-only");
+        const tagMarker = path.join(app, ".wgsextract-release-tag");
+        const scripts = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../examples/WGSExtract/scripts/windows");
+        for (const directory of [bin, path.join(app, ".pixi"), usersWorkspace, path.join(prefix, "conda-meta"), fixture]) {
+          await mkdir(directory, { recursive: true });
+        }
+        await writeFile(path.join(app, "install_windows.bat"), "@echo off\r\nexit /b 99\r\n");
+        await writeFile(path.join(app, "pixi.toml"), '[workspace]\nversion = "0.8.10"\n');
+        await writeFile(path.join(app, ".pixi", "config.toml"), `detached-environments = '${envs}'\n`);
+        await symlink(path.dirname(prefix), path.join(app, ".pixi", "envs"), "junction");
+        await writeFile(path.join(bin, "wgsextract.cmd"), "@echo off\r\n");
+        await writeFile(path.join(prefix, "conda-meta", "pixi"), JSON.stringify({ manifest_path: path.join(app, "pixi.toml") }));
+        await writeFile(path.join(prefix, "version.txt"), "0.8.10");
+        await writeFile(oldFile, "old source");
+        await writeFile(path.join(runtime, "install-manifest.json"), JSON.stringify({ wgsextractRef: "v0.8.10", items: [] }));
+        const settings = "# keep exactly as written\n";
+        await writeFile(config, settings);
+
+        await writeFile(path.join(fixture, "pixi.toml"), '[workspace]\nversion = "0.9.0"\n');
+        await writeFile(path.join(fixture, "install_windows.bat"), "@echo off\r\npowershell.exe -NoProfile -ExecutionPolicy Bypass -File \"%~dp0fixture.ps1\"\r\nexit /b %errorlevel%\r\n");
+        await writeFile(path.join(fixture, "fixture.ps1"), `
+  $ErrorActionPreference = 'Stop'
+  $envs = $env:PIXI_PROJECT_ENVIRONMENT_DIR
+  $prefix = Join-Path $envs 'fixture/envs/default'
+  New-Item -ItemType Directory -Force -Path '.pixi', (Join-Path $prefix 'conda-meta') | Out-Null
+  Set-Content -Encoding UTF8 '.pixi/config.toml' "detached-environments = '$envs'"
+  @{manifest_path = (Join-Path $PWD 'pixi.toml')} | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $prefix 'conda-meta/pixi')
+  Set-Content (Join-Path $prefix 'version.txt') '0.9.0'
+  ${outcome === "cancellation" ? "Write-Host 'replacement environment written'; Start-Sleep -Seconds 120" : ""}
+  exit ${outcome === "failure" ? 23 : 0}
+  `);
+        await writeFile(pixi, `
+  if ($args[0] -ne 'run' -or $args[-1] -ne '--version') { exit 1 }
+  Get-Content (Join-Path $env:WGSEXTRACT_PIXI_BASE_DIR 'envs/fixture/envs/default/version.txt')
+  exit 0
+  `);
+        const env = {
+          ...process.env,
+          LOCALAPPDATA: root,
+          PIXI: pixi,
+          WGSEXTRACT_APP_DIR: app,
+          WGSEXTRACT_ARCHIVE_URL: archive,
+          WGSEXTRACT_INSTALL_DIR: path.dirname(app),
+          WGSEXTRACT_GUI_CONFIG_PATH: config,
+          WGSEXTRACT_GUI_BUNDLE_WORKSPACE: usersWorkspace,
+          WGSEXTRACT_MSYS2_ROOT: path.join(root, "no-msys2"),
+          WGSEXTRACT_PIXI_BASE_DIR: pixiBase,
+          WGSEXTRACT_REF: "v0.9.0",
+        };
+        if (process.platform !== "win32") {
+          // The upstream batch installer is a boundary. This shim runs the same fixture on POSIX.
+          env.ComSpec = path.join(root, "cmd");
+          await writeFile(env.ComSpec, '#!/bin/sh\nexec pwsh -NoProfile -File ./fixture.ps1\n', { mode: 0o755 });
+        }
+        const manager = createProcessManager({ maxOutputBytes: 64_000, maxErrorBytes: 64_000 });
+        t.after(() => manager.terminateAllProcesses());
+        const run = (args, options = {}) => manager.runProcess(setupPowerShell,
+          ["-NoProfile", "-ExecutionPolicy", "Bypass", ...args], { env, cwd: root, timeoutMs: 60_000, ...options });
+        const versions = () => run(["-File", path.join(scripts, "run-wgsextract.ps1"), "--version"]);
+        const before = await versions();
+        assert.equal(before.stdout.trim(), "0.8.10", before.stderr);
+
+        const zip = await run(["-Command", "Add-Type -AssemblyName System.IO.Compression.FileSystem; [IO.Compression.ZipFile]::CreateFromDirectory('source', $env:WGSEXTRACT_ARCHIVE_URL, 'Fastest', $true)"]);
+        assert.equal(zip.exitCode, 0, zip.stderr);
+        const setup = ["-File", path.join(scripts, "setup-wgsextract-pixi.ps1")];
+        if (outcome === "cancellation") {
+          const controller = new AbortController();
+          await assert.rejects(run(setup, {
+            signal: controller.signal,
+            onStdout(text) {
+              if (text.includes("replacement environment written")) controller.abort();
+            },
+          }), /cancelled/i);
+        } else {
+          const result = await run(setup);
+          assert.equal(result.exitCode, outcome === "failure" ? 23 : 0, result.stderr);
+        }
+        const launched = await versions();
+        const rolledBack = outcome !== "upgrade";
+        assert.equal(launched.exitCode, 0, launched.stderr);
+        assert.equal(launched.stdout.trim(), rolledBack ? "0.8.10" : "0.9.0");
+        assert.equal(existsSync(oldFile), rolledBack);
+        if (rolledBack) assert.equal(existsSync(tagMarker), false);
+        else assert.equal((await readFile(tagMarker, "utf8")).trim(), "v0.9.0");
+        const installed = JSON.parse((await readFile(path.join(runtime, "install-manifest.json"), "utf8")).trim());
+        assert.equal(installed.wgsextractRef, rolledBack ? "v0.8.10" : "v0.9.0");
+        assert.equal(await readFile(config, "utf8"), settings);
+      });
+    }
+  });
 });

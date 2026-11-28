@@ -1,5 +1,7 @@
 import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { parse } from "smol-toml";
 import { commandLine, setupResultLine, shellQuote } from "../../../shared/rendering.js";
 import { setupStepsForPlatform } from "../../../shared/setup-platforms.js";
 import { isSetupStepKind, type SetupStepKind } from "../../../shared/setup-step-kinds.js";
@@ -9,7 +11,7 @@ import { loadBundleState, saveBundleState } from "./bundle-state.js";
 import { expandPathTokens, resolveBundlePath, bundleEnvironment } from "./paths.js";
 import { platformCommand } from "./platform-command.js";
 import { resolvePlatformScriptPath } from "./platform-scripts.js";
-import { errorMessage } from "./errors.js";
+import { errnoCode, errorMessage } from "./errors.js";
 
 const activeWorkspaces = new Set<string>();
 
@@ -159,23 +161,44 @@ async function runStepSet(steps: SetupStep[], bundleRoot: string, runProcess: Ru
 }
 
 /**
- * Forgets a finished setup whose tools (its pathTool steps' files) are gone, so the app offers setup again
- * instead of every command failing. That is the case after an upgrade from 0.8.6 or earlier, whose setup
- * installed the CLI runtime in the workspace instead of the app's data folder, or once a user deleted it.
+ * Forget completed setup when a managed tool has gone missing or no longer matches the bundle's pin.
+ * This only reads local files; the existing Setup flow handles download consent.
  */
-export async function forgetSetupWithMissingTools(manifest: SetupManifest, bundleRoot: string): Promise<boolean> {
+export async function forgetSetupWithStaleTools(manifest: SetupManifest, bundleRoot: string): Promise<boolean> {
     const { setupRun } = await loadBundleState(bundleRoot);
     if (!setupRun || setupRun.status === "running") {
         return false;
     }
-    const missing = setupStepsForPlatform(manifest.setup?.steps ?? [])
-        .filter((step) => step.kind === "pathTool")
-        .map((step) => expandSetupValue(step.value, bundleRoot))
-        .some((tool) => path.isAbsolute(tool) && !existsSync(tool));
-    if (missing) {
-        await saveBundleState({ setupRun: null }, bundleRoot);
+    for (const step of setupStepsForPlatform(manifest.setup?.steps ?? [])) {
+        const tool = expandSetupValue(step.value, bundleRoot);
+        const missing = step.kind === "pathTool" && path.isAbsolute(tool) && !existsSync(tool);
+        const outdated = step.installedVersionFile && await installedToolVersion(step, bundleRoot) !== step.toolVersion;
+        if (missing || outdated) {
+            await saveBundleState({ setupRun: null }, bundleRoot);
+            return true;
+        }
     }
-    return missing;
+    return false;
+}
+
+async function installedToolVersion(step: SetupStep, bundleRoot: string): Promise<string | null> {
+    try {
+        return (await readFile(expandSetupValue(step.installedVersionFile, bundleRoot), "utf8")).trim();
+    } catch (error) {
+        if (errnoCode(error) !== "ENOENT" || !step.legacyPixiVersionFile) {
+            return null;
+        }
+    }
+    // Released versions through 0.8.10 have no marker. Trust the installed source, not a prior Setup result.
+    try {
+        const manifest = parse(await readFile(expandSetupValue(step.legacyPixiVersionFile, bundleRoot), "utf8"));
+        const workspace = manifest.workspace ?? manifest.project;
+        return workspace && typeof workspace === "object" && "version" in workspace && typeof workspace.version === "string"
+            ? `v${workspace.version}`
+            : null;
+    } catch {
+        return null;
+    }
 }
 
 export async function runInitialSetupIfNeeded(

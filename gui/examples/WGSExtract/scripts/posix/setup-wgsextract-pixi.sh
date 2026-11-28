@@ -148,6 +148,15 @@ log "Delegating WGS Extract CLI install to upstream install.sh..."
 # archive after shell syntax validation. The release tag file controls that pin.
 mkdir -p "$BIN_DIR"
 sh "$installer"
+installed_ref="$REF"
+if [ "$REF" = custom ]; then
+  # Install Lab and other local archives can supply a source without a ref.
+  installed_ref="$(awk -F '"' '
+    /^\[/ { workspace = $0 ~ /^\[(workspace|project)\]$/ }
+    workspace && /^version[[:space:]]*=/ { print "v" $2; exit }
+  ' "$APP_DIR/pixi.toml")"
+fi
+printf '%s\n' "${installed_ref:-$REF}" > "$APP_DIR/.wgsextract-release-tag"
 
 # Save activation once for desktop calls. An older or externally managed
 # runtime can still run through the existing offline Pixi path.
