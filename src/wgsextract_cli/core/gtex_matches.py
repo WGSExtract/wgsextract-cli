@@ -1,6 +1,7 @@
 """Write a long TSV of exact GRCh38 GTEx variant–gene–tissue associations."""
 
 import csv
+import os
 import shutil
 import sqlite3
 import subprocess
@@ -22,15 +23,20 @@ def write_matches(
     aliases = primary_grch38_aliases()
     contigs: dict[str, bool] = {}
     records = matched_records = matched_alts = associations = 0
+    replacing = destination.is_file()
+
+    def open_staged(path: str, flags: int) -> int:
+        return os.open(path, flags, 0o600 if replacing else 0o666)
+
     with (
-        output.open("w", encoding="utf-8", newline="") as stream,
+        open(output, "x", encoding="utf-8", newline="", opener=open_staged) as stream,
         popen(
             ["bcftools", "query", "-f", r"%CHROM\t%POS\t%REF\t%ALT\n", vcf],
             stdout=subprocess.PIPE,
             text=True,
         ) as query,
     ):
-        if destination.is_file():
+        if replacing:
             shutil.copymode(destination, output)
         writer = csv.writer(stream, delimiter="\t", lineterminator="\n")
         writer.writerow(COLUMNS)
