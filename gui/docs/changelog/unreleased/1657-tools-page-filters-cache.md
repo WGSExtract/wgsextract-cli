@@ -5,7 +5,8 @@
   where WGS Extract keeps its files ([#1657, Tools page follow-ups](https://github.com/WGSExtract/wgsextract-cli/pull/1657)).
 
 - The Tools page has a "Hide mandatory and pre-installed" checkbox beside its
-  filter, checked by default ([#1657, Tools page follow-ups](https://github.com/WGSExtract/wgsextract-cli/pull/1657)).
+  filter, checked by default. A mandatory or pre-installed tool that is
+  missing stays in the list ([#1657, Tools page follow-ups](https://github.com/WGSExtract/wgsextract-cli/pull/1657)).
 
 ## Changed
 

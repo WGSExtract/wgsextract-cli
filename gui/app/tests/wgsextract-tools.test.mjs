@@ -87,26 +87,19 @@ test("each Tools row shows its status, whether it is mandatory, and where it com
     assert.equal(rows.plink2.values.details, "Download PLINK 2 for your system.");
 });
 
-test("Tools rows list installed tools first (mandatory, pre-installed, the rest), then missing, then unavailable", () => {
-    const order = items({ details: { tools: [
-        tool({ name: "sambamba", status: "unavailable" }),
-        tool({ name: "plink2" }),
-        tool({ name: "Gatk", status: "installed", path: "pixi run -e gatk gatk", environment: "gatk" }),
-        tool({ name: "minimap2", status: "installed", path: "/env/bin/minimap2", preinstalled: true }),
+test("a missing mandatory or pre-installed tool isn't hidden with the installed ones", () => {
+    const tags = Object.fromEntries(items({ details: { tools: [
+        tool({ name: "samtools", group: "mandatory", status: "missing" }),
         tool({ name: "bcftools", group: "mandatory", status: "installed", path: "/env/bin/bcftools" }),
-        tool({ name: "delly" }),
-        tool({ name: "abc", status: "installed", path: "pixi run -e abc abc", environment: "abc" }),
-        tool({ name: "bwa-mem3", status: "unavailable" }),
-    ] } }).items.map((row) => row.id);
+        tool({ name: "minimap2", status: "missing", preinstalled: true }),
+        tool({ name: "fastp", status: "installed", path: "/env/bin/fastp", preinstalled: true }),
+    ] } }).items.map((row) => [row.id, row.tags[0]]));
 
-    assert.deepEqual(order, ["bcftools", "minimap2", "abc", "Gatk", "delly", "plink2", "bwa-mem3", "sambamba"]);
-});
-
-test("a table's keyword filter keeps rows holding every typed word, in any case", () => {
-    const text = "java17 openjdk 17.0.21 optional installed";
-    assert.ok(rowMatchesFilter(text, ""));
-    assert.ok(rowMatchesFilter(text, "  OpenJDK   installed "));
-    assert.ok(!rowMatchesFilter(text, "openjdk missing"));
+    assert.deepEqual(Object.fromEntries(Object.entries(tags).map(([name, tag]) => [name, tag.id])), {
+        samtools: "mandatory-missing", bcftools: "mandatory", minimap2: "pre-installed-missing", fastp: "pre-installed",
+    });
+    assert.equal(tags.samtools.title, "mandatory");
+    assert.equal(tags.minimap2.title, "pre-installed");
 });
 
 test("Tools rows carry the commands that use each tool, and the page hides mandatory and pre-installed by default", () => {

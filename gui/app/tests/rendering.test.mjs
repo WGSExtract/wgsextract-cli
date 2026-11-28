@@ -586,6 +586,14 @@ test("an action keeps other pages' library lists cached unless it is in their co
   reset();
   invalidateAfterAction({ id: "chip", command: { executable: "x", arguments: ["microarray", "--ref", "r"], optionalArguments: [["--download"]] } }, "vcf");
   assert.deepEqual(cached(), []);
+  // Microarray's Downloads checkbox puts --download in through a placeholder: ticked, it drops every list.
+  const chip = { id: "chip", command: { executable: "x", arguments: ["microarray"], optionalArguments: [["{{microarray_download}}"]] } };
+  reset();
+  invalidateAfterAction(chip, "vcf", { checkedOptions: { microarray_download: "--download" } });
+  assert.deepEqual(cached(), []);
+  reset();
+  invalidateAfterAction(chip, "vcf", { checkedOptions: { microarray_download: "" } });
+  assert.deepEqual(cached(), ["control:genomes", "control:tools"]);
   reset();
   invalidateAfterFieldChange(["ref_path"]);
   assert.deepEqual(cached(), ["control:tools"]);

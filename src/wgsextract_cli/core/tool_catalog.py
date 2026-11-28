@@ -1,5 +1,6 @@
 """The external tools the CLI uses, and where Pixi provides them."""
 
+import functools
 import platform
 import sys
 from collections.abc import Callable
@@ -111,6 +112,7 @@ def required_dependency_tools(include_python: bool = True) -> list[str]:
     return [tool for tool in MANDATORY_TOOLS if tool != "python3"]
 
 
+@functools.cache
 def host_is_arm64() -> bool:
     """Whether the computer's CPU is ARM64, not this process's: x64 Python runs
     emulated on Windows ARM64, and under Rosetta on Apple silicon."""

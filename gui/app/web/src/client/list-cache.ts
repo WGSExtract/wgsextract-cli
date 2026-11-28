@@ -1,6 +1,7 @@
 import { state } from "./state.js";
 import { invalidateDataSources } from "./operations-data.js";
-import type { ActionSpec } from "../../../shared/types.js";
+import { renderedCommand } from "../../../shared/rendering-placeholders.js";
+import type { ActionSpec, CommandContext } from "../../../shared/types.js";
 
 /**
  * Library lists (Tools, Reference Data, Reference Genomes) run a slow command, so their results stay cached across
@@ -42,11 +43,15 @@ export function commandFamily(args: readonly string[] = []): string {
 /** Options that fetch or install something, which can change any library list (a Microarray run's --download). */
 const DOWNLOAD_OPTIONS = new Set(["--download", "--install"]);
 
-/** After `action` ran from page `pageID`: drops every data source but the library lists it can't have changed. */
-export function invalidateAfterAction(action: ActionSpec, pageID: string | undefined) {
+/**
+ * After `action` ran from page `pageID` with `context`: drops every data source but the library lists it can't have
+ * changed. Flags are read from the command as it ran: a checkbox puts `--download` in through a placeholder.
+ */
+export function invalidateAfterAction(action: ActionSpec, pageID: string | undefined, context: CommandContext = {}) {
     const args = action.command?.arguments ?? [];
     const family = commandFamily(args);
-    const downloads = [...args, ...(action.command?.optionalArguments ?? []).flat()].some((arg) => DOWNLOAD_OPTIONS.has(arg));
+    const ran = action.command ? renderedCommand(action.command, context).arguments ?? [] : [];
+    const downloads = ran.flatMap((arg) => String(arg).split(/[\s,]+/)).some((arg) => DOWNLOAD_OPTIONS.has(arg));
     const lists = cachedLists();
     invalidateDataSources((key) => {
         const list = lists.get(key);

@@ -397,11 +397,17 @@ function compareTools(a, b) {
         || String(a.name).localeCompare(String(b.name), "en", { sensitivity: "base" });
 }
 
-/** Mandatory, optional, or pre-installed: optional but shipped with the CLI, so it can't be removed on its own. */
+/**
+ * Mandatory, optional, or pre-installed: optional but shipped with the CLI, so it can't be removed on its own. A
+ * mandatory or pre-installed tool that isn't installed gets its own id ("mandatory-missing"), so the page's "hide
+ * mandatory and pre-installed" box never hides the rows most worth seeing; its pill reads the same.
+ */
 function groupTag(tool) {
-    if (tool.group === "mandatory") return { id: "mandatory", title: "mandatory", style: "primary" };
-    if (tool.preinstalled) return { id: "pre-installed", title: "pre-installed", style: "secondary" };
-    return { id: tool.group, title: tool.group, style: "secondary" };
+    const builtIn = tool.group === "mandatory" ? "mandatory" : tool.preinstalled ? "pre-installed" : "";
+    if (!builtIn) return { id: tool.group, title: tool.group, style: "secondary" };
+    const style = builtIn === "mandatory" ? "primary" : "secondary";
+    const id = tool.status === "installed" ? builtIn : `${builtIn}-${tool.status}`;
+    return { id, title: builtIn, style };
 }
 
 function row(tool) {

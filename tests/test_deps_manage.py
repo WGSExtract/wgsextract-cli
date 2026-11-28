@@ -5,6 +5,7 @@ offer "Install and Continue" before a run, as it does for a missing genome."""
 import json
 import os
 import platform
+import subprocess
 import sys
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from wgsextract_cli.core.tool_catalog import (
     PIXI_TOOL_ENVS,
     PLATFORM_ONLY_TOOLS,
     UNAVAILABLE_WHY,
+    host_is_arm64,
     host_label,
     optional_dependency_tools,
     platform_unavailable_tools,
@@ -91,6 +93,22 @@ def test_list_describes_the_computer(host, capsys):
     assert computer["disks"]
     assert "workspace" in [p for disk in computer["disks"] for p in disk["used_for"]]
     assert all(0 <= disk["free"] <= disk["total"] for disk in computer["disks"])
+
+
+def test_list_still_lists_tools_when_the_computer_wont_describe_itself(
+    host, capsys, monkeypatch
+):
+    import psutil
+
+    def refuse():
+        raise psutil.AccessDenied()
+
+    monkeypatch.setattr(psutil, "virtual_memory", refuse)
+    code, document = _json(capsys, "deps", "list")
+
+    assert code == 0
+    assert document["details"]["host"] == {}
+    assert document["details"]["tools"]
 
 
 def test_list_succeeds_where_check_fails_on_a_missing_mandatory_tool(host, capsys):
@@ -174,10 +192,17 @@ def test_host_label_names_the_computer_as_people_do(
     monkeypatch.setattr(
         windows_arm64, "windows_native_machine", lambda: 0xAA64 if arm else 0x8664
     )
-    monkeypatch.setattr(native_support, "_apple_silicon", lambda: arm)
+    # macOS asks sysctl for the CPU: x86-64 Python under Rosetta reports x86_64.
+    monkeypatch.setattr(
+        native_support.subprocess,
+        "run",
+        lambda args, **_: subprocess.CompletedProcess(args, 0, "1\n" if arm else "0\n"),
+    )
     if system == "linux":
         monkeypatch.setattr(platform, "machine", lambda: machine)
+    host_is_arm64.cache_clear()
     assert host_label() == label
+    host_is_arm64.cache_clear()
 
 
 def test_list_tells_how_to_install_a_tool_the_app_cannot(host, capsys):

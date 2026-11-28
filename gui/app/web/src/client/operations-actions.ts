@@ -185,7 +185,7 @@ export async function streamCommand(
     finally {
         options.signal?.removeEventListener("abort", forwardAbort);
         runningActionControllers.delete(runningID);
-        invalidateAfterAction(action, pageID);
+        invalidateAfterAction(action, pageID, context);
         clearFileStateCache();
         scheduleRender();
     }

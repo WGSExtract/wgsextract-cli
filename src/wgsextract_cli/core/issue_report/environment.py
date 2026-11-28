@@ -10,6 +10,7 @@ import subprocess
 import sys
 from collections.abc import Iterable
 from pathlib import Path
+from types import ModuleType
 
 from wgsextract_cli import __version__
 
@@ -94,9 +95,17 @@ def os_name() -> str:
 
 def host_details() -> dict[str, object]:
     """This computer for `deps list`: OS, CPU architecture, cores, memory, and
-    free space where WGS Extract writes (one entry per disk)."""
+    free space where WGS Extract writes (one entry per disk). Empty if the
+    system won't say: `deps list` must not fail over it."""
     import psutil
 
+    try:
+        return _host_details(psutil)
+    except (OSError, RuntimeError, ValueError, psutil.Error):
+        return {}
+
+
+def _host_details(psutil: ModuleType) -> dict[str, object]:
     from wgsextract_cli.core.tool_catalog import host_architecture
 
     memory = psutil.virtual_memory()
