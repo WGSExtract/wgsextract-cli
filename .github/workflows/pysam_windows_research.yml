@@ -1,0 +1,105 @@
+name: pysam Windows research
+
+on:
+  push:
+    branches: [research/pysam-windows]
+
+permissions:
+  contents: read
+
+jobs:
+  win64:
+    if: github.repository == 'theontho/wgsextract-cli'
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      PYTHONUTF8: '1'
+      REF_PATH: ':'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          sparse-checkout: tests/fixtures/imputation_hg002
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          repository: smeng9/pysam
+          ref: af64d6505174a5dd8b904f624d7fa17632401755
+          path: out/pysam-source
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+          architecture: x64
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          path-type: inherit
+          install: >-
+            make
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-bzip2
+            mingw-w64-ucrt-x86_64-libsystre
+            mingw-w64-ucrt-x86_64-xz
+            mingw-w64-ucrt-x86_64-zlib
+            mingw-w64-ucrt-x86_64-curl-winssl
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-bcftools
+            mingw-w64-ucrt-x86_64-htslib
+            mingw-w64-ucrt-x86_64-samtools
+      - name: Build and install wheel
+        shell: msys2 {0}
+        run: |
+          set -euxo pipefail
+          python -m pip install 'Cython>=3,<4' setuptools wheel pytest
+          python -m pip wheel --no-build-isolation --no-deps --wheel-dir out/wheels ./out/pysam-source 2>&1 | tee out/build.log
+          sha256sum out/wheels/*.whl | tee out/wheels/SHA256SUMS
+          python -m pip install --no-deps out/wheels/*.whl
+      - name: Installed wheel smoke without MSYS2 on PATH
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          from pathlib import Path
+          import platform
+          import pysam
+
+          base = Path("tests/fixtures/imputation_hg002")
+          region = ("chr20", 10_000_000, 10_010_000)
+          cram = Path("out/fixture.cram")
+          def record_id(read):
+              return (read.query_name, read.flag, read.reference_start, read.cigarstring, read.query_sequence)
+
+          with pysam.AlignmentFile(base / "reads.bam", "rb") as bam:
+              reads = list(bam.fetch(*region))
+              assert reads
+              with pysam.AlignmentFile(cram, "wc", template=bam, format_options=[b"no_ref=1"]) as dest:
+                  for read in reads:
+                      dest.write(read)
+          pysam.index(str(cram))
+          with pysam.AlignmentFile(cram, "rc") as decoded:
+              assert list(map(record_id, decoded.fetch(*region))) == list(map(record_id, reads))
+          with pysam.VariantFile(base / "truth.vcf.gz") as vcf:
+              variants = list(vcf.fetch(*region))
+              assert variants and all(row.contig == "chr20" and row.alts for row in variants)
+          print(platform.platform(), platform.machine(), platform.python_version())
+          print(pysam.__file__, pysam.__version__, pysam.__samtools_version__)
+          print(f"PASS: {len(reads)} indexed BAM reads and identical CRAM reads; {len(variants)} tabix VCF records.")
+          '@ | python - | Tee-Object -FilePath out/smoke.log
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Run fork test suite against installed wheel
+        if: always() && !cancelled()
+        shell: msys2 {0}
+        run: |
+          set -euxo pipefail
+          cd out/pysam-source
+          python -P -c "import pysam; print(pysam.__file__); assert 'site-packages' in pysam.__file__"
+          PYTHONPATH="" pytest --junitxml=../pytest.xml --basetemp=../pytest-temp -ra 2>&1 | tee ../pytest.log
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: pysam-win64-evidence
+          path: |
+            out/wheels/
+            out/*.log
+            out/pytest.xml
+          retention-days: 30
