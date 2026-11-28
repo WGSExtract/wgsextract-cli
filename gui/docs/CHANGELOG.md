@@ -96,7 +96,7 @@ Unreleased changes are tracked in [fragments](changelog/unreleased/README.md).
   actual folder, and the Gene page sidebar label stays on one line beside its icon.
 - Switching between Basic and Advanced always redraws the page, even when
   saving the choice fails ([#1657, Tools page follow-ups](https://github.com/WGSExtract/wgsextract-cli/pull/1657)).
-- Setup can initialize the reference library with the bundled v0.8.10 CLI,
+- Setup can initialize the reference library with the older v0.8.10 CLI,
   which predates the new network-mode options. Local commands still run in
   Low Data and Off modes; the bundled CLI uses its own download consent
   ([#1674, bundled CLI setup](https://github.com/WGSExtract/wgsextract-cli/issues/1674)).
