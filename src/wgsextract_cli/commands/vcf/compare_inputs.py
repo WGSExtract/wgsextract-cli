@@ -240,8 +240,8 @@ def vcf_stream(path: Path) -> Iterator[IO[str]]:
                 yield stream
             status = process.wait()
         except BaseException:
-            if process.poll() is None:
-                terminate_trees([process])
+            # The launcher's process group may still hold stderr open after it exits.
+            terminate_trees([process])
             process.wait()
             raise
         finally:

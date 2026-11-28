@@ -20,11 +20,39 @@ from unittest.mock import Mock
 
 import pytest
 
+from wgsextract_cli.commands.vcf import compare_inputs
 from wgsextract_cli.core import utils
 from wgsextract_cli.core.process_registry import process_group_kwargs
-from wgsextract_cli.core.utils import popen, run_command, wait_with_cancel
+from wgsextract_cli.core.utils import UsageError, popen, run_command, wait_with_cancel
 
 PACKAGE = Path(__file__).resolve().parents[1] / "src" / "wgsextract_cli"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX process groups")
+def test_compare_1697_closes_stderr_after_launcher_has_exited(tmp_path, monkeypatch):
+    timed_out = tmp_path / "child-kept-stderr-open"
+    launcher = "import subprocess, sys; subprocess.Popen(sys.argv[1:])"
+    child = (
+        "import sys, time; from pathlib import Path; "
+        "time.sleep(6); Path(sys.argv[1]).touch()"
+    )
+
+    def launch_reader(_command, *, stdout, stderr):
+        process = popen(
+            [sys.executable, "-c", launcher, sys.executable, "-c", child, timed_out],
+            stdout=stdout,
+            stderr=stderr,
+        )
+        assert process.wait(timeout=5) == 0
+        return process
+
+    monkeypatch.setattr(compare_inputs, "popen", launch_reader)
+    with (
+        pytest.raises(UsageError, match="Conflicting REF"),
+        compare_inputs.vcf_stream(tmp_path / "normalized.bcf"),
+    ):
+        raise UsageError("Conflicting REF bases")
+    assert not timed_out.exists(), "cleanup waited for the child to release stderr"
 
 
 @pytest.mark.skipif(os.name != "posix", reason="requires a POSIX shell and waitpid")
