@@ -2607,3 +2607,27 @@ a.doc-link {
 .library-filter {
   width: min(100%, 24em);
 }
+
+/* A sortable column heading: the whole heading is the button, with an arrow while it sorts the table. */
+.column-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+.column-sort:hover,
+.column-sort.active {
+  color: var(--accent);
+}
+
+.column-sort-arrow {
+  min-width: 0.8em;
+  font-size: 0.75em;
+}

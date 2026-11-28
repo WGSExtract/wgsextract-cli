@@ -47,6 +47,9 @@
 "app.library.empty" = "Es sind keine Bibliothekselemente definiert."  # i18n-source-hash:e9b707e7
 "app.library.filter.label" = "Nach Stichwort filtern"  # i18n-source-hash:f4fd5788
 "app.library.noMatches" = "Keine Einträge passen zum Filter."  # i18n-source-hash:05e491f0
+"app.library.sort.columnTooltip" = "Nach dieser Spalte sortieren. Erneut klicken, um die Reihenfolge umzukehren."  # i18n-source-hash:d7da290a
+"app.library.sort.default.title" = "Standardsortierung"  # i18n-source-hash:720bbded
+"app.library.sort.default.tooltip" = "Die Spaltensortierung aufheben und die Zeilen in ihrer ursprünglichen Reihenfolge anzeigen."  # i18n-source-hash:9251e8b0
 "app.loadButton.title" = "Laden"  # i18n-source-hash:ddcb77ff
 "app.loading.title" = "Wird geladen..."  # i18n-source-hash:b04ba49f
 "app.network.allowUpdateChecks" = "Nach Updates suchen erlauben"  # i18n-source-hash:6969b75d

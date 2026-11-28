@@ -10,6 +10,7 @@ export { renderSetupStatusSection, renderStandardOptionsAccessory } from "./view
 import { renderSetupStatusSection, renderStandardOptionsAccessory } from "./view/settings.js";
 import { renderSettingFolderMoveDialog, renderWorkspaceLocationRows } from "./view/workspace-location.js";
 import { renderAppVersion } from "./view/app-version.js";
+import { renderDefaultSortButton, renderSortableHeading, sortedRows } from "./view/library-sort.js";
 export { renderSetupGlobalStatusBar, renderSetupPromptDialog, setupHasNeverRun, setupNeedsAttention, setupPageID, setupPromptMessage, } from "./view/setup.js";
 import { renderUpdateNavigationItem } from "./view/update.js";
 import { actionTitledForUIMode, basicCommandPrefixes, commandRunBy, isShownInUIMode, visibleActions, visibleControls, visibleOptions, visiblePages, visibleRows, visibleSections, type UIMode } from "../../../shared/ui-mode.js";
@@ -514,9 +515,10 @@ export function renderLibraryList(control: ControlSpec, context: CommandContext,
     const listed = modeRows(control, state.manifest, state.uiMode);
     const key = `control:${control.id}`;
     const hiddenTags = hiddenRowTags(control, state.libraryHideRows.get(key));
-    const rows = listed.filter((row) => !(row.tags ?? []).some((tag) => hiddenTags.includes(String(tag.id ?? ""))));
     const hide = control.hideRows as { label?: unknown } | undefined;
     const columns = (control.columns ?? []).filter((column) => isShownInUIMode(column, state.uiMode));
+    const sort = state.librarySorts.get(key);
+    const rows = sortedRows(listed.filter((row) => !(row.tags ?? []).some((tag) => hiddenTags.includes(String(tag.id ?? "")))), columns, sort);
     if (state.loadingDataSources.has(key) && !state.dataSourcePayloads.has(key)) {
         return `
       <div class="library-list">
@@ -535,7 +537,8 @@ export function renderLibraryList(control: ControlSpec, context: CommandContext,
         ${listed.length
         ? `<input type="search" class="library-filter" data-library-filter="${escapeAttribute(key)}"
               value="${escapeAttribute(filter)}" placeholder="${escapeAttribute(state.labels.libraryFilterLabel)}"
-              aria-label="${escapeAttribute(state.labels.libraryFilterLabel)}">`
+              aria-label="${escapeAttribute(state.labels.libraryFilterLabel)}">
+          ${renderDefaultSortButton(key, sort)}`
         : ""}
         ${listed.length && hide && typeof hide.label === "string"
         ? `<label class="library-hide-rows"><input type="checkbox" data-library-hide-rows="${escapeAttribute(key)}" ${hiddenTags.length ? "checked" : ""}> ${escapeHTML(hide.label)}</label>`
@@ -547,7 +550,7 @@ export function renderLibraryList(control: ControlSpec, context: CommandContext,
       ${listed.length
         ? `<div class="table-wrap" data-scroll-key="${escapeAttribute(key)}" tabindex="0" role="region" aria-label="${escapeAttribute(control.label)}"><table>
               <thead><tr>
-                ${columns.map((column) => `<th>${escapeHTML(column.title)}</th>`).join("")}
+                ${columns.map((column) => renderSortableHeading(key, column, sort)).join("")}
                 ${(control.rowActions ?? []).length ? `<th>${escapeHTML(state.labels.actionsColumnTitle)}</th>` : ""}
               </tr></thead>
               <tbody>

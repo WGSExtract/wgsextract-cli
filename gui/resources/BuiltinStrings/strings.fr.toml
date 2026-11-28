@@ -47,6 +47,9 @@
 "app.library.empty" = "Aucun élément de bibliothèque n’est défini."  # i18n-source-hash:e9b707e7
 "app.library.filter.label" = "Filtrer par mot-clé"  # i18n-source-hash:f4fd5788
 "app.library.noMatches" = "Aucun élément ne correspond au filtre."  # i18n-source-hash:05e491f0
+"app.library.sort.columnTooltip" = "Trier selon cette colonne. Cliquez à nouveau pour inverser l’ordre."  # i18n-source-hash:d7da290a
+"app.library.sort.default.title" = "Tri par défaut"  # i18n-source-hash:720bbded
+"app.library.sort.default.tooltip" = "Annuler le tri par colonne et afficher les lignes dans leur ordre d’origine."  # i18n-source-hash:9251e8b0
 "app.loadButton.title" = "Charger"  # i18n-source-hash:ddcb77ff
 "app.loading.title" = "Chargement..."  # i18n-source-hash:b04ba49f
 "app.network.allowUpdateChecks" = "Autoriser la recherche de mises à jour"  # i18n-source-hash:6969b75d

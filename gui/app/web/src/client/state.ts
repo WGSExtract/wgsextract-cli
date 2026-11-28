@@ -48,6 +48,7 @@ export function createInitialState(): WebUIState {
         toggledSections: new Set(),
         libraryFilters: new Map(),
         libraryHideRows: new Map(),
+        librarySorts: new Map(),
         setupExpanded: null,
         fileStateValues: new Map(),
         loadingFileStates: new Set(),

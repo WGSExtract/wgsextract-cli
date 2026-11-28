@@ -47,6 +47,9 @@
 "app.library.empty" = "Nenhum item de biblioteca foi definido."  # i18n-source-hash:e9b707e7
 "app.library.filter.label" = "Filtrar por palavra-chave"  # i18n-source-hash:f4fd5788
 "app.library.noMatches" = "Nenhum item corresponde ao filtro."  # i18n-source-hash:05e491f0
+"app.library.sort.columnTooltip" = "Ordenar por esta coluna. Clique de novo para inverter a ordem."  # i18n-source-hash:d7da290a
+"app.library.sort.default.title" = "Ordem padrão"  # i18n-source-hash:720bbded
+"app.library.sort.default.tooltip" = "Remover a ordenação por coluna e mostrar as linhas na ordem original."  # i18n-source-hash:9251e8b0
 "app.loadButton.title" = "Carregar"  # i18n-source-hash:ddcb77ff
 "app.loading.title" = "Carregando..."  # i18n-source-hash:b04ba49f
 "app.network.allowUpdateChecks" = "Permitir verificar atualizações"  # i18n-source-hash:6969b75d

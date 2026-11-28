@@ -58,6 +58,9 @@ export type RunProcess = (
     options: ProcessRunOptions,
 ) => Promise<ProcessResult>;
 
+/** A table's column sort: the column clicked, ascending on the first click and reversed on each click after. */
+export type LibrarySort = { column: string; descending: boolean };
+
 export interface UpdateState {
     supported: boolean;
     checked: boolean;
@@ -285,6 +288,8 @@ export interface WebUIState {
     /** Keyword typed into a table's filter box, by "control:<id>". */
     libraryFilters: Map<string, string>;
     libraryHideRows: Map<string, boolean>;
+    /** Each table's column sort, until Default Sort clears it. */
+    librarySorts: Map<string, LibrarySort>;
     /** The Settings page's Setup steps: shown (true), hidden (false), or null to hide them once setup has run. */
     setupExpanded: boolean | null;
     fileStateValues: Map<string, ValueMap>;

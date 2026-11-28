@@ -24,6 +24,14 @@ WGS Extract bundles and runs its tools through isolated, version-locked
 - **Details:** Installed version, status, or platform/availability notes.
 - **Environment:** Which Pixi environment provides the tool (or whether it is provided externally / by the OS).
 
+## Sorting and filtering the table
+
+Click a column heading to sort the table by it: the first click sorts
+ascending (▲) and each further click reverses the order (▼). Sizes sort by
+their actual size, and empty cells stay at the bottom. Type in **Filter by
+keyword** to show only matching rows. **Default Sort**, beside the filter,
+clears the column sort and restores the original order.
+
 ## Row actions
 
 The action button on each row reflects what WGS Extract can do on your computer:

@@ -1,5 +1,8 @@
 ## Added
 
+- Tables on **Reference Data**, **Reference Genomes** and **Tools** sort by
+  any column: click a heading for ascending, again for descending. **Default
+  Sort**, beside the filter, restores the original order.
 - Setup's first step checks for an app update. The desktop app's startup
   check fills it in, and **Rerun Setup** checks again, so one click shows
   whether the app itself needs an update.

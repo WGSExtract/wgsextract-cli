@@ -328,11 +328,48 @@ test("a long library table scrolls under a header row that stays in view", async
     { pageID: "genomes", sectionID: "list", controlID: "genomes" },
   );
   // The table is its own scroll area: keyboard-scrollable, named, and keyed so a re-render keeps its place.
-  assert.match(html, /class="table-wrap" data-scroll-key="control:genomes" tabindex="0" role="region" aria-label="Genomes"><table>\s*<thead><tr>\s*<th>Name<\/th>/);
+  assert.match(html, /class="table-wrap" data-scroll-key="control:genomes" tabindex="0" role="region" aria-label="Genomes"><table>\s*<thead><tr>\s*<th aria-sort="none"><button type="button" class="column-sort" data-library-sort="control:genomes" data-library-sort-column="name"[^>]*>Name</);
 
   const css = readFileSync(new URL("../web/styles.css", import.meta.url), "utf8");
   assert.match(css, /\.table-wrap \{[^}]*max-height:[^}]*overflow: auto;/);
   assert.match(css, /\.table-wrap thead th \{[^}]*position: sticky;[^}]*top: 0;/);
+});
+
+test("library table headings sort ascending, then descending, and Default Sort restores the original order", async () => {
+  // Owner request: sortable column headings on Reference Data, Reference Genomes and Tools, and a Default Sort button.
+  const { state, renderLibraryList } = await clientView();
+  const { nextLibrarySort } = await import("../dist/web/src/client/view/library-sort.js");
+  state.labels = { actionsColumnTitle: "Actions", librarySortDefaultTitle: "Default Sort", libraryFilterLabel: "Filter" };
+  const control = {
+    id: "genomes", kind: "libraryList", label: "Genomes",
+    columns: [{ id: "name", title: "Name" }, { id: "size", title: "Size" }],
+    rowTemplate: { id: "{{id}}", title: "{{id}}", values: { size: "{{size}}" } },
+    items: [{ id: "hs38", size: "3.1 GB" }, { id: "T2T v10", size: "" }, { id: "hg19", size: "900 MB" }, { id: "T2T v9", size: "12 GB" }],
+  };
+  const render = () => renderLibraryList(control, { fieldValues: {}, checkedOptions: {}, configValues: {}, rowValues: {} }, { pageID: "genomes", sectionID: "list", controlID: "genomes" });
+  const cells = (index) => [...render().matchAll(/<tr data-filter-text=[^>]*>([\s\S]*?)<\/tr>/g)]
+    .map((row) => [...row[1].matchAll(/<td>([\s\S]*?)<\/td>/g)][index]?.[1].replace(/<[^>]*>/g, "").trim());
+  const sort = (column) => state.librarySorts.set("control:genomes", nextLibrarySort(state.librarySorts.get("control:genomes"), column));
+  const resetButton = () => /<button[^>]*data-library-sort-reset="control:genomes"[^>]*>/.exec(render())?.[0] ?? "";
+  const original = cells(0);
+  assert.deepEqual(original, ["hs38", "T2T v10", "hg19", "T2T v9"]);
+  assert.match(resetButton(), /disabled/, "nothing to reset before a column is chosen");
+
+  sort("size");
+  assert.deepEqual(cells(1), ["900 MB", "3.1 GB", "12 GB", ""], "sizes compare by bytes, ascending first; an empty cell stays last");
+  assert.match(render(), /<th aria-sort="ascending"><button[^>]*data-library-sort-column="size"[^>]*>Size<span class="column-sort-arrow" aria-hidden="true">▲</);
+  assert.doesNotMatch(resetButton(), /disabled/);
+
+  sort("size");
+  assert.deepEqual(cells(1), ["12 GB", "3.1 GB", "900 MB", ""], "a second click reverses; an empty cell still stays last");
+  assert.match(render(), /<th aria-sort="descending"><button[^>]*data-library-sort-column="size"[^>]*>Size<span class="column-sort-arrow" aria-hidden="true">▼</);
+
+  sort("name");
+  assert.deepEqual(cells(0), ["hg19", "hs38", "T2T v9", "T2T v10"], "another column starts ascending, in natural order");
+
+  state.librarySorts.delete("control:genomes");
+  assert.deepEqual(cells(0), original, "Default Sort restores the data source's order");
+  assert.match(resetButton(), /disabled/);
 });
 
 test("re-rendering keeps a scrolled table where it was", async () => {

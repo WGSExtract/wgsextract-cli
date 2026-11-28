@@ -53,6 +53,14 @@ An older installation is marked **Update available**.
 | **GERP++** | Evolutionary conservation RS scores (bigWig) | Conservation annotation and Genome Viewer track. |
 | **PhyloP** | 100-way vertebrate conservation scores (bigWig) | Conservation annotation and Genome Viewer track. |
 
+## Sorting and filtering the table
+
+Click a column heading to sort the table by it: the first click sorts
+ascending (▲) and each further click reverses the order (▼). Sizes sort by
+their actual size, and empty cells stay at the bottom. Type in **Filter by
+keyword** to show only matching rows. **Default Sort**, beside the filter,
+clears the column sort and restores the original order.
+
 ## Row actions
 
 - **Install / Download:** Runs the corresponding `wgsextract ref ...` or `wgsextract vep download` command and streams progress to the terminal pane. Larger downloads ask for confirmation first.
