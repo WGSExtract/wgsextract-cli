@@ -4,10 +4,21 @@ import ntpath
 import os
 import sys
 from os import PathLike, fspath
-from pathlib import Path
+from pathlib import Path, PurePath, PureWindowsPath
 from typing import TypeAlias
+from urllib.parse import quote
 
 PathInput: TypeAlias = str | PathLike[str]
+
+
+def sqlite_readonly_uri(path: PurePath, *, immutable: bool = False) -> str:
+    """Make a SQLite URI from an absolute path, with no remote authority."""
+    if isinstance(path, PureWindowsPath) and path.drive.startswith("\\\\"):
+        # SQLite needs the two UNC slashes in the path, not in the authority.
+        uri = "file://" + quote(path.as_posix(), safe="/")
+    else:
+        uri = path.as_uri()
+    return uri + ("?mode=ro&immutable=1" if immutable else "?mode=ro")
 
 
 def java_local_path(path: PathInput) -> str:

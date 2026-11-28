@@ -213,6 +213,30 @@ def test_1624_refuses_other_or_unidentified_builds(
     assert not (tmp_path / "regulatory_annotated.vcf.gz").exists()
 
 
+@pytest.mark.parametrize(
+    ("header", "conflict"),
+    [
+        ("##assembly=38\n##contig=<ID=1>\n", False),
+        ('##contig=<ID=1,assembly="38">\n', False),
+        ("##reference=GRCh38.fa\n##contig=<ID=1,assembly=37>\n", True),
+    ],
+)
+def test_1682_numeric_assembly_declarations_are_build_evidence(
+    tmp_path: Path, imported: Path, header: str, conflict: bool
+) -> None:
+    params = VcfRegulatoryParams(
+        input=_vcf(tmp_path, header), ref=imported, outdir=tmp_path
+    )
+    output = tmp_path / "regulatory_annotated.vcf.gz"
+    if conflict:
+        with pytest.raises(api.CommandFailed, match="hg19"):
+            api.vcf.regulatory(params)
+        assert not output.exists()
+    else:
+        api.vcf.regulatory(params)
+        assert output.is_file()
+
+
 def test_1624_refseq_and_reannotation_preserve_unrelated_utf8(
     tmp_path: Path, imported: Path
 ) -> None:

@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Generic, TypeGuard, TypeVar
 
 from wgsextract_cli.core import acmg, personal_report
+from wgsextract_cli.core.paths import sqlite_readonly_uri
 from wgsextract_cli.core.results import MANIFEST_SUFFIX
 from wgsextract_cli.core.results import SCHEMA_ID as RESULT_SCHEMA
 from wgsextract_cli.core.utils import WGSExtractError
@@ -222,7 +223,7 @@ def _sqlite_rows(
     path: Path, after: int, where: list[str], values: list[Any]
 ) -> Iterator[tuple[int, dict[str, Any]]]:
     try:
-        db = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+        db = sqlite3.connect(sqlite_readonly_uri(path.resolve()), uri=True)
     except sqlite3.Error as e:
         raise RequestError(400, "usage", f"Can't open {path}: {e}") from None
     try:

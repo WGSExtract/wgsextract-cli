@@ -6,7 +6,7 @@ from wgsextract_cli.core.alignment.metadata import (
     vcf_detection_header,
     vcf_metadata_build_hint,
 )
-from wgsextract_cli.core.builds import build_from_path, is_hg38_build
+from wgsextract_cli.core.builds import build_from_path, canonical_build, is_hg38_build
 from wgsextract_cli.core.methylation_annotations import Chromosome, chromosomes
 from wgsextract_cli.core.utils import UsageError
 from wgsextract_cli.core.vcf_header import attributes
@@ -17,6 +17,11 @@ def primary_grch38_aliases() -> dict[str, Chromosome]:
     return {
         alias.upper(): chrom for chrom in chromosomes("hg38") for alias in chrom.aliases
     }
+
+
+def _assembly_build(value: str) -> str | None:
+    value = value.strip().strip('"')
+    return canonical_build(value) or build_from_path(value)
 
 
 def require_grch38(vcf: str, annotation: str) -> None:
@@ -46,7 +51,9 @@ def require_grch38(vcf: str, annotation: str) -> None:
                 confirmed = True
             if not chrom and key.partition(".")[0] in accessions:
                 raise wrong_build(f"incompatible primary accession {name}")
-            declared = build_from_path(fields.get("assembly", ""))
+            declared = _assembly_build(fields.get("assembly", ""))
+        elif line.lower().startswith("##assembly="):
+            declared = _assembly_build(line.partition("=")[2])
         else:
             declared = vcf_metadata_build_hint(line)
         if declared:
