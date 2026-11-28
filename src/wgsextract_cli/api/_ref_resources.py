@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ._params import Params, param
+from ._params import Params, param, with_config_defaults
 from ._ref_library import _InLibrary
 from ._shared import ref_param, threads_param
 
@@ -32,6 +33,33 @@ class _Resource(_InLibrary, Params):
     """Annotation data downloaded into the library's ``ref`` folder."""
 
     ref: Path | None = ref_param()
+
+
+@dataclass(frozen=True, kw_only=True)
+class RefGtexParams(_InLibrary, Params):
+    """Verify or explicitly download the GRCh38 GTEx v10 SuSiE eQTL archive."""
+
+    COMMAND = "ref gtex"
+
+    download: bool = param(
+        False,
+        help="Fetch the pinned public archive (174 MB) from storage.googleapis.com.",
+        action="store_true",
+        writes=True,
+    )
+    ref: Path | None = ref_param()
+
+    def library(self) -> Path:
+        from wgsextract_cli.core.ref_library.assets import resolve_reference_library
+        from wgsextract_cli.core.ref_library.resolver import library_roots
+
+        return Path(resolve_reference_library(library_roots(self.ref).root))
+
+    def implied_paths(self) -> Iterator[tuple[str, Path]]:
+        from wgsextract_cli.core import gtex_data
+
+        filled = with_config_defaults(self, only={"ref"})
+        yield from gtex_data.guarded_paths(filled.ref)
 
 
 @dataclass(frozen=True, kw_only=True)

@@ -56,6 +56,9 @@ from ..vcf import (
     VcfGraniteQcParams as VcfGraniteQcParams,
 )
 from ..vcf import (
+    VcfGtexParams as VcfGtexParams,
+)
+from ..vcf import (
     VcfImputeParams as VcfImputeParams,
 )
 from ..vcf import (

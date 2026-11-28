@@ -37,6 +37,7 @@ NAMES = {
     "cadd-indel": "CADD indels",
     "gerp": "GERP++",
     "gene-list": "Report gene list",
+    "gtex": "GTEx v10 SuSiE eQTL",
 }
 # A component table recorded beside its resource, under that resource's terms.
 _TERMS_OF = {"cadd-indel": "cadd"}
@@ -110,6 +111,32 @@ def _with_terms(record: ResourceRecord) -> ResourceRecord:
     ):
         record.source_url = entry.get("upstream_url")
     return record
+
+
+def pinned_resource(resource_id: str, build: str) -> dict[str, Any]:
+    """Return a static release pin, not a mutable refresh or mirror hint."""
+    entry = _entry(f"{resource_id}-{build}")
+    if not entry or not entry.get("sha256") or entry.get("upstream_mutable"):
+        raise ValueError(f"No fixed SHA-256 pin for {resource_id} ({build}).")
+    return entry
+
+
+def record_pinned(resource_id: str, build: str, path: Path) -> None:
+    """Record a local derivative of a verified pinned release."""
+    entry = pinned_resource(resource_id, build)
+    record = ResourceRecord(
+        id=resource_id,
+        name=NAMES[resource_id],
+        role="annotation",
+        path=str(path.absolute()),
+        fingerprint=fingerprint(path),
+        build=build,
+        release=entry["version"],
+        release_basis="pinned_sha256",
+        source_url=entry["upstream_url"],
+    )
+    _terms(record, entry)
+    current_result().add_resource(record)
 
 
 def describe(

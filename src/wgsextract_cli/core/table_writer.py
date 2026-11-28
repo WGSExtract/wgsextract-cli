@@ -69,16 +69,17 @@ def tsv_lines(columns: Sequence[Column], rows: Iterable[Sequence[Value]]) -> str
     return "\n".join(lines) + "\n"
 
 
-def require_pyarrow() -> ModuleType:
+def require_pyarrow(feature: str = "--format parquet") -> ModuleType:
     """``pyarrow.parquet``, or a MissingDependencyError saying how to get it."""
     try:
         import pyarrow.parquet as pq
     except ImportError as e:
+        alternative = ", or use --format tsv" if feature == "--format parquet" else ""
         raise MissingDependencyError(
-            "--format parquet needs the optional 'pyarrow' package, which is not "
+            f"{feature} needs the optional 'pyarrow' package, which is not "
             f"installed for {sys.executable}. Install it into that environment "
             "(pip install 'wgsextract-cli[parquet]', or pixi run -e parquet from "
-            "a source checkout), or use --format tsv. pyarrow has no Windows "
+            f"a source checkout){alternative}. pyarrow has no Windows "
             f"ARM64 build yet. ({e})"
         ) from e
     return cast(ModuleType, pq)

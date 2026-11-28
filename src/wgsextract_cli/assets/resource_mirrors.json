@@ -4,6 +4,20 @@
   "audit_date": "2026-11-17",
   "resources": [
     {
+      "id": "gtex-hg38",
+      "upstream_url": "https://storage.googleapis.com/adult-gtex/bulk-qtl/v10/susie-qtl/GTEx_v10_SuSiE_eQTL.tar",
+      "version": "GTEx v10 SuSiE eQTL",
+      "redistributable": false,
+      "licence": "GTEx Portal data release policy",
+      "licence_url": "https://www.gtexportal.org/home/license",
+      "attribution": "Genotype-Tissue Expression (GTEx) Project; https://www.gtexportal.org/",
+      "reason": "Upstream only: the GTEx policy requires attribution and disclosure when redistributing data that are not current.",
+      "retrieved_at": "2026-11-28T03:43:00Z",
+      "size": 174469120,
+      "sha256": "294891d94fa04556963fb67434ca33bf5f92a236d4f05ea208c3d9b4b13f211f",
+      "parts": []
+    },
+    {
       "id": "clinvar-hg38",
       "upstream_mutable": true,
       "upstream_url": "https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/clinvar.vcf.gz",

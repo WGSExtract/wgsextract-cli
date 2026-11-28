@@ -137,14 +137,15 @@ def test_path_guard_covers_every_ref_path(op, field, value):
     assert refused.value.code in ("usage", "path_not_allowed")
 
 
-def test_1663_screen_checks_configured_unc_ref_before_looking_up_library(monkeypatch):
+@pytest.mark.parametrize("op", ["ref/regulatory", "ref/gtex"])
+def test_fixed_track_checks_configured_unc_ref_before_library_lookup(monkeypatch, op):
     unc = r"\\host\share\evil.fa"
     monkeypatch.setitem(settings, "reference_fasta", unc)
     filesystem = _RecordingFlavour()
     guard = PathGuard([_DATA], pathmod=filesystem)
     filesystem.opened.clear()
     with pytest.raises(RequestError) as refused:
-        guard.check(params_from_json(find("ref/regulatory"), {}))
+        guard.check(params_from_json(find(op), {}))
     assert refused.value.code == "path_not_allowed"
     assert not filesystem.opened
 

@@ -333,6 +333,36 @@ def test_1624_screen_refuses_a_downloads_symlink_outside_the_library(tmp_path, o
     assert error.value.code == "path_not_allowed"
 
 
+@pytest.mark.parametrize(
+    ("op", "receipt"),
+    [("ref/gtex", False), ("vcf/gtex", True), ("vcf/chain-annotate", True)],
+)
+def test_1662_gtex_refuses_track_and_receipt_symlinks_outside_library(
+    tmp_path, op, receipt
+):
+    from wgsextract_cli.core import gtex_data
+
+    library = tmp_path / "library"
+    track = gtex_data.path(str(library))
+    if receipt:
+        track = gtex_data.receipt_path(track)
+    track.parent.mkdir(parents=True)
+    outside = tmp_path / "outside.sqlite"
+    outside.touch()
+    try:
+        track.symlink_to(outside)
+    except OSError:
+        pytest.skip("symlinks are unavailable")
+    request = {"ref": str(library)}
+    if op != "ref/gtex":
+        request["input"] = str(library / "sample.vcf")
+    if op == "vcf/chain-annotate":
+        request["annotations"] = "gtex"
+    with pytest.raises(RequestError) as error:
+        PathGuard([library]).check(params_from_json(find(op), request))
+    assert error.value.code == "path_not_allowed"
+
+
 @pytest.mark.parametrize("op", ["vcf/impute", "ref/imputation"])
 @pytest.mark.parametrize("escape", ["panel-folder", "binary", "marker-path"])
 def test_732_imputation_rejects_escaping_panel_paths(tmp_path, op, escape):

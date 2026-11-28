@@ -373,6 +373,14 @@ class ReferenceLibrary:
         )
 
     @property
+    def gtex_file(self) -> str | None:
+        """Return the installed pinned GTEx track, if available."""
+        from wgsextract_cli.core import gtex_data
+
+        table = gtex_data.path(self.root)
+        return str(table) if gtex_data.installed(table) else None
+
+    @property
     def regulatory_file(self) -> str | None:
         """Complete installed SCREEN track, before its content verification."""
         from wgsextract_cli.core import regulatory_data
