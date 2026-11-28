@@ -33,7 +33,10 @@ def test_1677_1688_gui_actions_use_the_installed_runtime_and_stage_ploidy_in_bot
         'const fs = require("node:fs"), path = require("node:path");\n'
         'const name = process.env.WGSEXTRACT_GUI_APP_DATA_NAME ?? "WGSExtract-gui-dev";\n'
         'const cli = fs.readFileSync(path.join(process.env.SUPPORT, name, "runtime", "cli"), "utf8");\n'
-        'const ploidy = fs.readFileSync(path.join(process.env.USERS_WORKSPACE, "reference", "ploidy.txt"));\n'
+        "const args = process.argv.slice(2);\n"
+        'const workspaceFlag = args.includes("--users-workspace") ? "--users-workspace" : "--workspace";\n'
+        "const workspace = args[args.indexOf(workspaceFlag) + 1];\n"
+        'const ploidy = fs.readFileSync(path.join(workspace, "reference", "ploidy.txt"));\n'
         'process.stdout.write(JSON.stringify([cli, ploidy.toString("hex")]));\n',
         encoding="utf-8",
     )
@@ -64,8 +67,8 @@ def test_1677_1688_gui_actions_use_the_installed_runtime_and_stage_ploidy_in_bot
         script.write_text(
             '$ErrorActionPreference = "Stop"; $InstallDir = $env:APP; '
             '$AppData = $env:APP_DATA; $AppIdentifier = "legacy"; '
-            "$R = $OldWorkspace = $Workspace = $InstallDir; $UsersArgs = @(); "
-            "$UsersWorkspace = $env:USERS_WORKSPACE; "
+            "$R = $InstallDir; $UsersArgs = @(); "
+            "$Workspace = $UsersWorkspace = $env:USERS_WORKSPACE; $OldWorkspace = $env:OLD_WORKSPACE; "
             "$lab = @{ LAB_CLI_ARCHIVE_URL = $env:LAB_CLI_ARCHIVE_URL }; "
             "function Step($name, $command, $cwd) { & $command[0] $command[1..($command.Length-1)] }\n"
             + launch
@@ -86,13 +89,25 @@ def test_1677_1688_gui_actions_use_the_installed_runtime_and_stage_ploidy_in_bot
         command = [
             shell,
             "-c",
-            'APP_DIR="$APP"; WORKSPACE="$APP"; R="$APP"; APP_ID=legacy; BUNDLE_ID=legacy\n'
+            'APP_DIR="$APP"; WORKSPACE="$USERS_WORKSPACE"; R="$APP"; APP_ID=legacy; BUNDLE_ID=legacy\n'
             '. "$APP_LIFECYCLE"\n' + helpers + "\n" + launch + "}\napp_actions",
         ]
 
-    for lane in ("pinned", "tree"):
-        workspace = tmp_path / lane
-        lane_env = {**env, "USERS_WORKSPACE": str(workspace)}
+    split_marker = app_data / "BundleWorkspaces/wgs-extract/.bundle-workspace"
+    split_marker.parent.mkdir(parents=True)
+    for lane, layout in (("pinned", "legacy"), ("pinned", "split"), ("tree", "split")):
+        workspace = tmp_path / f"{lane}-{layout}-users"
+        legacy = tmp_path / f"{lane}-{layout}-legacy"
+        if layout == "split":
+            split_marker.touch()
+        else:
+            legacy.mkdir()
+            (legacy / ".bundle-workspace").touch()
+        lane_env = {
+            **env,
+            "USERS_WORKSPACE": str(workspace),
+            "OLD_WORKSPACE": str(legacy),
+        }
         if lane == "tree":
             archive_var = (
                 "LAB_ARCHIVE_URL" if platform == "macos" else "LAB_CLI_ARCHIVE_URL"
@@ -101,11 +116,13 @@ def test_1677_1688_gui_actions_use_the_installed_runtime_and_stage_ploidy_in_bot
         result = subprocess.run(
             command, env=lane_env, capture_output=True, text=True, timeout=15
         )
-        assert result.returncode == 0, f"{lane}: {result.stderr}"
+        assert result.returncode == 0, f"{lane} {layout}: {result.stderr}"
         assert json.loads(result.stdout) == [
             "installed CLI",
             fixture.read_bytes().hex(),
         ]
+        if layout == "legacy":
+            assert not workspace.exists()
 
 
 @pytest.mark.parametrize("platform", ["linux", "macos", "windows"])

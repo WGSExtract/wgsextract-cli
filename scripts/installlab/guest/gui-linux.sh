@@ -109,13 +109,14 @@ EOF
 }
 
 app_actions() {
-    install_mini_genome_ploidy "$USERS_WORKSPACE" "$HERE" || return 1
     if [ ! -e "$USERS_WORKSPACE/.bundle-workspace" ] && [ -e "$APP_DATA/BundleWorkspaces/wgs-extract/.bundle-workspace" ]; then
         WORKSPACE="$APP_DATA/BundleWorkspaces/wgs-extract"
         USERS_ARGS="--users-workspace"
     elif [ ! -e "$USERS_WORKSPACE/.bundle-workspace" ] && [ -e "$OLD_WORKSPACE/.bundle-workspace" ]; then
         WORKSPACE="$OLD_WORKSPACE"
     fi
+    reference_workspace=${USERS_ARGS:+$USERS_WORKSPACE}
+    install_mini_genome_ploidy "${reference_workspace:-$WORKSPACE}" "$HERE" || return 1
     runner="$APP_DIR/app/dist/web/src/server/bundle-test-cli.js"
     # Released apps before the single-app layout use platform/typescript.
     if [ ! -f "$runner" ]; then
