@@ -123,6 +123,8 @@ export type LabelTextKey =
     | "sectionCollapseLabel"
     | "loadWebUITitle"
     | "libraryEmptyTitle"
+    | "libraryFilterLabel"
+    | "libraryNoMatchesTitle"
     | "actionMissingInputsFormat"
     | "actionUnavailableTitle"
     | "terminalCloseTabLabelFormat"

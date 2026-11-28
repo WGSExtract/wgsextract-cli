@@ -21,6 +21,9 @@ export function actionCertification(action: ActionSpec) {
         }
         path = words.join(" ");
     }
+    // Tools page buttons install, remove or check one tool: a badge there reads
+    // as that tool's rating, not the dependency manager's.
+    if (path?.startsWith("deps ")) return undefined;
     const level = path && Object.hasOwn(commandCertifications, path) ? commandCertifications[path] : undefined;
     return path && level ? { path, level } : undefined;
 }

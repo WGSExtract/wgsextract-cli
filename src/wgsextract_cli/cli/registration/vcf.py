@@ -139,10 +139,14 @@ CERTIFICATION = {
     "vcf info": tested(
         _REVIEWED, "test_vcf_info.py", "VCF statistics and build checks on fixtures."
     ),
-    "vcf variantqc": experimental(
-        _REVIEWED,
-        "External VariantQC integration does not establish output correctness.",
-        f"{_TESTS}/test_genotype_qc.py",
+    "vcf variantqc": validated(
+        "2026-11-26",
+        "Real DISCVRSeq 1.3.86 on Java 17 matched bcftools counts for HG002 GRCh38 "
+        "calls on Windows; the same tool WGS Extract v5 used. Report content "
+        "beyond variant counts is DISCVRSeq's own.",
+        ("Windows",),
+        "https://github.com/BimberLab/DISCVRSeq",
+        f"{_TESTS}/test_vcf_info.py",
     ),
     "vcf granite-qc": experimental(
         _REVIEWED,
@@ -264,7 +268,9 @@ NEEDS = {
     "vcf indel": _n(HOURS, *_CALL),
     "vcf call": _n(HOURS, *_CALL, optional="bgzip delly pbsv sambamba sniffles"),
     "vcf info": _n(SECONDS, "bcftools", optional="htsfile samtools tabix"),
-    "vcf variantqc": _n(MINUTES, optional="bcftools discvrseq java17 samtools"),
+    "vcf variantqc": _n(
+        MINUTES, optional="bcftools bgzip discvrseq java17 samtools tabix"
+    ),
     "vcf granite-qc": _n(MINUTES, "bcftools", optional="granite samtools"),
     "vcf annotate": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf filter": _n(MINUTES, *_VCF, optional="bgzip samtools"),

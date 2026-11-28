@@ -27,7 +27,13 @@ for (const mode of ["basic", "advanced"]) {
                         continue;
                     }
                     const description = actionCertification(action);
-                    assert.ok(description, `${page.id}/${section.id}/${action.id} has no CLI certification`);
+                    if (action.command?.arguments?.[0] === "deps") {
+                        // Tool rows: the dependency manager's level isn't the tool's.
+                        assert.equal(description, undefined);
+                        assert.equal(badge, "");
+                        continue;
+                    }
+                    assert.ok(description,`${page.id}/${section.id}/${action.id} has no CLI certification`);
                     const { path, level } = description;
                     assert.ok(certificationStrings[`${level}.tooltip`], `No help text for ${level}`);
                     assert.ok(badge.includes(`certification.html#command-${path.replaceAll(" ", "-")}"`));

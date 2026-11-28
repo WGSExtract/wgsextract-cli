@@ -45,6 +45,8 @@
 "app.jobs.status.warning" = "Mit Warnungen beendet"  # i18n-source-hash:05f8289b
 "app.layoutDirection.label" = "Anordnung"  # i18n-source-hash:972ad8d8
 "app.library.empty" = "Es sind keine Bibliothekselemente definiert."  # i18n-source-hash:e9b707e7
+"app.library.filter.label" = "Nach Stichwort filtern"  # i18n-source-hash:f4fd5788
+"app.library.noMatches" = "Keine Einträge passen zum Filter."  # i18n-source-hash:05e491f0
 "app.loadButton.title" = "Laden"  # i18n-source-hash:ddcb77ff
 "app.loading.title" = "Wird geladen..."  # i18n-source-hash:b04ba49f
 "app.network.confirmSetup" = "Der sparsame Netzwerkmodus ist aktiv. Einrichtung starten und große Downloads zulassen?"  # i18n-source-hash:7c11dab5

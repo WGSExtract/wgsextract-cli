@@ -16,6 +16,11 @@ from wgsextract_cli.api import (
     VcfInfoParams,
     VcfVariantQcParams,
 )
+from wgsextract_cli.core.dependencies import (
+    clear_tool_caches,
+    find_discvrseq_jar,
+    get_tool_path,
+)
 from wgsextract_cli.core.utils import MissingDependencyError
 from wgsextract_cli.core.variant_files import calculate_bam_md5
 from wgsextract_cli.core.vcf_reference import DIAGNOSTIC_RSIDS, identify_vcf_reference
@@ -296,3 +301,104 @@ def test_vcf_variantqc_and_granite_qc_validate_optional_tools_and_run(
     assert any(o.role == "granite_qc_json" for o in gqc_result.outputs)
     assert gqc_result.metrics["TiTv"] == 2.08
     assert "TiTv" in gqc_result.text
+
+
+def test_variantqc_input_falls_back_only_when_tabix_fails(tmp_path, monkeypatch):
+    """A VCF that changed while it was indexed stops VariantQC (an old TBI
+    could pass as fresh); a tabix run that failed falls back to a copy."""
+    from contextlib import ExitStack
+
+    from wgsextract_cli.commands.vcf import qc_tools
+    from wgsextract_cli.core.utils import WGSExtractError
+
+    vcf = tmp_path / "sample.vcf.gz"
+    vcf.write_bytes(b"")
+
+    def changed(_vcf):
+        raise WGSExtractError(f"VCF changed while indexing {vcf}; retry.")
+
+    monkeypatch.setattr(qc_tools, "ensure_vcf_indexed", changed)
+    with ExitStack() as cleanup, pytest.raises(WGSExtractError, match="changed"):
+        qc_tools._variantqc_input(vcf, tmp_path, cleanup)
+
+    def tabix_failed(_vcf):
+        try:
+            raise subprocess.CalledProcessError(1, "tabix")
+        except subprocess.CalledProcessError as e:
+            raise WGSExtractError("tabix failed") from e
+
+    copies = []
+
+    def copy(*args, **_kwargs):
+        copies.append(args[0])
+        out = tmp_path / "copy.vcf.gz"
+        out.write_bytes(b"")
+        Path(f"{out}.tbi").write_bytes(b"")
+        return str(out)
+
+    monkeypatch.setattr(qc_tools, "ensure_vcf_indexed", tabix_failed)
+    monkeypatch.setattr(qc_tools, "indexed_sample_vcf", copy)
+    with ExitStack() as cleanup:
+        assert qc_tools._variantqc_input(vcf, tmp_path, cleanup).endswith("copy.vcf.gz")
+    assert copies == [str(vcf)]
+
+
+def _real_java17() -> str | None:
+    java = get_tool_path("java17")
+    return java if java and Path(java).is_file() else None
+
+
+# Found now, at collection: the autouse fixtures then hide the user's config
+# and data folders, where DISCVRSeq or Java 17 may have been found.
+_REAL_DISCVRSEQ_JAR = find_discvrseq_jar()
+_REAL_JAVA17 = _real_java17()
+
+
+@needs_tools("bgzip", "tabix", "samtools", "discvrseq", "java17")
+@pytest.mark.parametrize("index", ["none", "csi", "short-tbi"])
+def test_vcf_variantqc_real_discvrseq_reads_any_indexed_bgzipped_vcf(
+    tmp_path, monkeypatch, index
+):
+    """Real VariantQC on a .vcf.gz without the <vcf>.tbi GATK reads: it
+    stopped with "An index is required but was not found" when the VCF had no
+    index, only a CSI one, or a sample.vcf.tbi."""
+    from wgsextract_cli.core.config import settings
+
+    if _REAL_DISCVRSEQ_JAR:
+        monkeypatch.setitem(settings, "discvrseq_jar", _REAL_DISCVRSEQ_JAR)
+    if _REAL_JAVA17:
+        monkeypatch.setitem(settings, "java17_executable", _REAL_JAVA17)
+    clear_tool_caches()
+    ref = write_fasta(tmp_path / "ref.fa", {"chr1": "ACGTTGCA" * 125})
+    subprocess.run(["samtools", "dict", "-o", tmp_path / "ref.dict", ref], check=True)
+    plain = _write_vcf(
+        tmp_path / "sample.vcf",
+        [
+            "##fileformat=VCFv4.2",
+            "##contig=<ID=chr1,length=1000>",
+            '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">',
+            "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tHG002",
+        ],
+        [
+            "chr1\t10\t.\tT\tC\t50\tPASS\t.\tGT\t0/1",
+            "chr1\t20\t.\tA\tG\t50\tPASS\t.\tGT\t1/1",
+            "chr1\t30\t.\tG\tGA\t50\tPASS\t.\tGT\t0/1",
+        ],
+    )
+    vcf = tmp_path / "sample.vcf.gz"
+    with vcf.open("wb") as out:
+        subprocess.run(["bgzip", "-c", plain], stdout=out, check=True)
+    if index == "csi":
+        subprocess.run(["tabix", "-C", "-p", "vcf", vcf], check=True)
+    elif index == "short-tbi":
+        subprocess.run(["tabix", "-p", "vcf", vcf], check=True)
+        Path(f"{vcf}.tbi").rename(tmp_path / "sample.vcf.tbi")
+
+    result = api.vcf.variantqc(
+        VcfVariantQcParams(vcf_input=vcf, ref=ref, outdir=tmp_path / "qc")
+    )
+
+    report = (tmp_path / "qc" / "sample.variantqc.html").read_text(encoding="utf-8")
+    assert any(o.role == "variantqc_report" for o in result.outputs)
+    assert '{"name":"nSNPs","data":[2,0,2]}' in report
+    assert '{"name":"nInsertions","data":[1,0,1]}' in report

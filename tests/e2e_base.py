@@ -26,6 +26,7 @@ from wgsextract_cli.core.dependencies import (
     is_pixi_tool_command,
     pixi_env_prefix,
 )
+from wgsextract_cli.core.file_lock import build_lock
 from wgsextract_cli.core.native_support import is_arm64_docker_host
 from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed
@@ -87,11 +88,22 @@ class E2EResult(TypedDict):
 def _prepare_fake_data() -> tuple[str, str]:
     ensure_fake_data(str(FAKE_DIR))
     ref = FAKE_DIR / "fake_ref.fa"
-    dictionary = run_command(
-        ["samtools", "dict", "-a", "GRCh38", str(ref)], capture_output=True
-    ).stdout
-    atomic_write(ref.with_suffix(".dict"), dictionary.encode())
+    dict_path = ref.with_suffix(".dict")
+    # Write the dictionary once per reference, under the fake data's own lock:
+    # another worker may be reading it, and Windows can't replace an open file.
+    if not _fresh(dict_path, ref):
+        with build_lock(f"{FAKE_DIR}.lock"):
+            if not _fresh(dict_path, ref):
+                dictionary = run_command(
+                    ["samtools", "dict", "-a", "GRCh38", str(ref)],
+                    capture_output=True,
+                ).stdout
+                atomic_write(dict_path, dictionary.encode())
     return str(ref), str(FAKE_DIR / "fake.bam")
+
+
+def _fresh(path: Path, source: Path) -> bool:
+    return path.is_file() and path.stat().st_mtime_ns >= source.stat().st_mtime_ns
 
 
 def _print_report(mode: str, results: list[E2EResult]) -> None:
