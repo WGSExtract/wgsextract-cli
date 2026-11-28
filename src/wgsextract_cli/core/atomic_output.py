@@ -169,12 +169,14 @@ def publish_output_set(
     *,
     retire: Sequence[Path] = (),
     checkpoint: Callable[[], None] | None = None,
+    guarded: Mapping[Path, Callable[[Path], None]] | None = None,
 ) -> None:
     """Publish validated files staged on the destination volume.
 
     All destinations and obsolete companions in ``retire`` must share a
     parent. List the primary file last so it is absent while its companions
     are being replaced or removed.
+    Guarded paths validate the file moved to backup and publish without clobbering.
     """
     files = list(staged_to_final.items())
     if files:
@@ -183,7 +185,9 @@ def publish_output_set(
         with contextlib.ExitStack() as local:
             scope = _publication_locks.get()
             (local if scope is None else scope).enter_context(lock)
-            _publish_output_set(files, retire, primary.parent, checkpoint)
+            _publish_output_set(
+                files, retire, primary.parent, checkpoint, guarded or {}
+            )
 
 
 def _preserve_output_permissions(
@@ -226,8 +230,9 @@ def _publish_output_set(
     retire: Sequence[Path],
     parent: Path,
     checkpoint: Callable[[], None] | None,
+    guarded: Mapping[Path, Callable[[Path], None]],
 ) -> None:
-    from wgsextract_cli.core.utils import WGSExtractError
+    from wgsextract_cli.core.utils import UsageError, WGSExtractError
 
     sources = {final: staged for staged, final in files}
     existing: list[Path] = []
@@ -265,18 +270,52 @@ def _publish_output_set(
             backup = backup_dir / str(number)
             retired.append((final, backup))
             final.replace(backup)
+            if final in guarded:
+                guarded[final](backup)
         for staged, final in files:
             publishing.append((staged, final))
-            staged.replace(final)
+            if final in guarded:
+                try:
+                    os.link(staged, final)
+                except FileExistsError as error:
+                    raise UsageError(
+                        f"{final.name} appeared during publication; rerun the command."
+                    ) from error
+            else:
+                staged.replace(final)
     except BaseException:
         try:
             # Cancellation can arrive just after a rename returns.
-            for staged, final in reversed(publishing):
-                if not staged.exists():
+            conflict = None
+            for number, (staged, final) in enumerate(reversed(publishing)):
+                if final in guarded:
+                    candidate = backup_dir / f"rollback-{number}"
+                    try:
+                        final.replace(candidate)
+                    except FileNotFoundError:
+                        continue
+                    if candidate.is_symlink() or not candidate.samefile(staged):
+                        try:
+                            os.link(candidate, final, follow_symlinks=False)
+                            candidate.unlink()
+                        except OSError as error:
+                            conflict = error
+                    else:
+                        candidate.unlink()
+                elif not staged.exists():
                     final.unlink(missing_ok=True)
             for final, backup in reversed(retired):
                 if os.path.lexists(backup):
-                    backup.replace(final)
+                    if final in guarded:
+                        try:
+                            os.link(backup, final, follow_symlinks=False)
+                            backup.unlink()
+                        except OSError as error:
+                            conflict = error
+                    else:
+                        backup.replace(final)
+            if conflict is not None:
+                raise conflict
         except OSError as error:
             raise WGSExtractError(
                 f"Could not restore previous outputs; remaining backups are in {backup_dir}"

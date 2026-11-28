@@ -238,7 +238,41 @@ def test_1662_exact_alt_retains_tissue_gene_set_and_effect(
         )
         assert not sidecar.exists()
         assert (output / "gtex_eqtl.tsv").is_file()
+        sidecar.write_bytes(b"User data, not a GTEx output\n")
+        api.vcf.chain_annotate(
+            api.VcfChainAnnotateParams(**common, annotations="regulatory")
+        )
+        assert sidecar.read_bytes() == b"User data, not a GTEx output\n"
     assert not server.requests
+
+
+@pytest.mark.parametrize("linked", [False, True], ids=["direct", "hardlink"])
+def test_1662_chain_refuses_to_delete_a_configured_phylop_input(
+    tmp_path, sample, gtex_bundle, monkeypatch, linked
+):
+    library = tmp_path / "library"
+    api.ref.gtex(api.RefGtexParams(ref=library, download=True))
+    common = {"input": sample, "ref": library, "outdir": tmp_path, "network": "off"}
+    api.vcf.chain_annotate(api.VcfChainAnnotateParams(**common, annotations="gtex"))
+    sidecar = tmp_path / "chain_gtex_eqtl.tsv"
+    phylop = b"#Chr\tStart\tEnd\tScore\n1\t10\t10\t3.0\n"
+    sidecar.unlink()
+    sidecar.write_bytes(phylop)
+    source = sidecar
+    if linked:
+        source = tmp_path / "configured-phylop.tsv"
+        try:
+            os.link(sidecar, source)
+        except OSError:
+            pytest.skip("hardlinks are unavailable")
+    monkeypatch.setitem(settings, "phylop_tsv_path", str(source))
+    with pytest.raises(
+        api.CommandFailed, match=r"chain_gtex_eqtl\.tsv.*overwrite an input"
+    ):
+        api.vcf.chain_annotate(
+            api.VcfChainAnnotateParams(**common, annotations="phylop")
+        )
+    assert sidecar.read_bytes() == source.read_bytes() == phylop
 
 
 def test_1662_gtex_bad_checksum_does_not_install(tmp_path, gtex_bundle):
