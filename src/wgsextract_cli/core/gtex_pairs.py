@@ -69,9 +69,9 @@ def _extract(
                 while chunk := stream.read(1 << 20):
                     _check_cancel(cancel)
                     destination.write(chunk)
-    if not all(path.is_file() for path in expected.values()):
-        raise ValueError(f"missing significant pairs or eGenes for {tissue}")
-    return archive.parent / pairs, archive.parent / egenes
+            if all(path.is_file() for path in expected.values()):
+                return archive.parent / pairs, archive.parent / egenes
+    raise ValueError(f"missing significant pairs or eGenes for {tissue}")
 
 
 def _gene_thresholds(egenes: Path) -> dict[str, tuple[str, float | None]]:
