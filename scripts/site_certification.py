@@ -26,6 +26,19 @@ def render() -> str:
             "`certification_notices = false` in `config.toml` to hide it without "
             "changing the level recorded in results. The notice is not a run warning.",
             "",
+            "## Promoting a command",
+            "",
+            "Open a pull request with evidence that meets the new level's criteria. "
+            "Link the validation reports and regression tests, identify the platforms "
+            "and inputs covered, and document the limits. Update the command's "
+            "`CERTIFICATION` entry in `src/wgsextract_cli/cli/registration/` with "
+            "the new level, evidence links and review date.",
+            "",
+            "For reviewed changes to the original inventory, also update "
+            "`tests/fixtures/certification_inventory_1596.tsv`. Regenerate the "
+            "desktop badge data with `python scripts/gen_server_openapi.py --gui`. "
+            "Lower the level if later evidence invalidates the qualification.",
+            "",
             "## Evidence by command",
             "",
             "| Command | Tier | Level | Evidence | Platforms | Reviewed |",
