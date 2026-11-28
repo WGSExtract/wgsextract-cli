@@ -596,7 +596,7 @@ def register(
         ),
         (
             "gtex",
-            "Write exact-ALT GRCh38 GTEx v10 SuSiE eQTL matches.",
+            "Write exact-ALT GRCh38 GTEx v10 eQTL matches.",
             VcfGtexParams,
             cmd_gtex,
         ),

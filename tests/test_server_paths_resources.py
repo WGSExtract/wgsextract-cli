@@ -334,16 +334,22 @@ def test_1624_screen_refuses_a_downloads_symlink_outside_the_library(tmp_path, o
 
 
 @pytest.mark.parametrize(
-    ("op", "receipt"),
-    [("ref/gtex", False), ("vcf/gtex", True), ("vcf/chain-annotate", True)],
+    ("op", "receipt", "pairs"),
+    [
+        ("ref/gtex", False, None),
+        ("vcf/gtex", True, None),
+        ("vcf/chain-annotate", True, None),
+        ("ref/gtex", False, "Whole_Blood"),
+        ("vcf/chain-annotate", True, "Whole_Blood"),
+    ],
 )
-def test_1662_gtex_refuses_track_and_receipt_symlinks_outside_library(
-    tmp_path, op, receipt
+def test_gtex_1662_1669_refuses_track_and_receipt_symlinks_outside_library(
+    tmp_path, op, receipt, pairs
 ):
     from wgsextract_cli.core import gtex_data
 
     library = tmp_path / "library"
-    track = gtex_data.path(str(library))
+    track = gtex_data.path(str(library), pairs)
     if receipt:
         track = gtex_data.receipt_path(track)
     track.parent.mkdir(parents=True)
@@ -354,6 +360,8 @@ def test_1662_gtex_refuses_track_and_receipt_symlinks_outside_library(
     except OSError:
         pytest.skip("symlinks are unavailable")
     request = {"ref": str(library)}
+    if pairs:
+        request["pairs"] = pairs
     if op != "ref/gtex":
         request["input"] = str(library / "sample.vcf")
     if op == "vcf/chain-annotate":

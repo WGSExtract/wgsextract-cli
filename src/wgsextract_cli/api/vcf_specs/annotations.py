@@ -14,6 +14,7 @@ from wgsextract_cli.api._shared import (
     confidence_gq_param,
     dry_run_param,
     force_steps_param,
+    gtex_pairs_param,
     ref_param,
     restart_param,
     threads_param,
@@ -328,17 +329,25 @@ class VcfAlphamissenseParams(_AnnotatorParams):
 
 @dataclass(frozen=True, kw_only=True)
 class VcfGtexParams(_VcfFileParams):
-    """Write research GTEx v10 SuSiE exact-ALT matches to ``gtex_eqtl.tsv``."""
+    """Write exact-ALT GTEx v10 matches to ``gtex_eqtl.tsv`` (SuSiE) or
+    ``gtex_eqtl_pairs.tsv`` (significant pairs for a selected tissue)."""
 
     COMMAND = "vcf gtex"
 
     ref: Path | None = ref_param()
+    pairs: str | None = gtex_pairs_param()
+
+    def __post_init__(self) -> None:
+        from wgsextract_cli.core.gtex_pairs import validate_tissue
+
+        super().__post_init__()
+        validate_tissue(self.pairs)
 
     def implied_paths(self) -> Iterator[tuple[str, Path]]:
         from wgsextract_cli.core import gtex_data
 
         filled = with_config_defaults(self, only={"ref"})
-        yield from gtex_data.guarded_paths(filled.ref)
+        yield from gtex_data.guarded_paths(filled.ref, filled.pairs)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -466,6 +475,7 @@ class VcfChainAnnotateParams(_VcfFileParams):
         help="Distinct comma-separated annotations (default: clinvar,revel,phylop,gnomad,vep). "
         "Include gtex to write a separate TSV for the final variants.",
     )
+    pairs: str | None = gtex_pairs_param()
     keep_intermediates: bool = param(
         False,
         help="Keep intermediate VCFs after success so later runs can reuse them.",
@@ -508,11 +518,18 @@ class VcfChainAnnotateParams(_VcfFileParams):
             from wgsextract_cli.core import gtex_data
 
             filled = with_config_defaults(self, only={"ref"})
-            yield from gtex_data.guarded_paths(filled.ref)
+            yield from gtex_data.guarded_paths(filled.ref, filled.pairs)
 
     def __post_init__(self) -> None:
+        from wgsextract_cli.core.gtex_pairs import validate_tissue
+
         super().__post_init__()
         if self.region is not None and self.bed is not None:
             raise UsageError("--region and --bed cannot be used together.")
         if self.table_format is not None and not self.to_table:
             raise UsageError("--table-format requires --to-table.")
+        validate_tissue(self.pairs)
+        if self.pairs is not None and "gtex" not in {
+            ann.strip().lower() for ann in self.annotations.split(",")
+        }:
+            raise UsageError("--pairs requires gtex in --annotations.")

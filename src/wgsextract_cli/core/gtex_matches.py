@@ -8,22 +8,29 @@ import subprocess
 from pathlib import Path
 
 from wgsextract_cli.core.gtex_data import SEQUENCE
+from wgsextract_cli.core.gtex_pairs import TSV_COLUMNS
 from wgsextract_cli.core.utils import WGSExtractError, popen
 from wgsextract_cli.core.vcf_build import primary_grch38_aliases
 
-COLUMNS = (
+_COLUMNS = (
     "chrom", "pos", "ref", "alt", "alt_index", "tissue", "gene_id", "gene_name",
-    "credible_set", "pip", "afc",
 )  # fmt: skip
 
 
 def write_matches(
-    vcf: str, output: Path, destination: Path, db: sqlite3.Connection
+    vcf: str,
+    output: Path,
+    destination: Path,
+    db: sqlite3.Connection,
+    *,
+    pairs: bool = False,
 ) -> dict[str, int]:
     aliases = primary_grch38_aliases()
     contigs: dict[str, bool] = {}
     records = matched_records = matched_alts = associations = 0
     replacing = destination.is_file()
+    fields = ", ".join(TSV_COLUMNS) if pairs else "cs, pip, afc"
+    extra_columns = TSV_COLUMNS if pairs else ("credible_set", "pip", "afc")
 
     def open_staged(path: str, flags: int) -> int:
         return os.open(path, flags, 0o600 if replacing else 0o666)
@@ -39,7 +46,7 @@ def write_matches(
         if replacing:
             shutil.copymode(destination, output)
         writer = csv.writer(stream, delimiter="\t", lineterminator="\n")
-        writer.writerow(COLUMNS)
+        writer.writerow((*_COLUMNS, *extra_columns))
         assert query.stdout is not None
         try:
             for line in query.stdout:
@@ -65,7 +72,7 @@ def write_matches(
                     if ref == alt:
                         continue
                     hits = db.execute(
-                        "SELECT tissue, gene, gene_name, cs, pip, afc "
+                        f"SELECT tissue, gene, gene_name, {fields} "
                         "FROM association WHERE chrom=? AND pos=? AND ref=? AND alt=? "
                         "ORDER BY ordinal",
                         (contig, pos, ref, alt),

@@ -61,6 +61,14 @@ def outdir_param(default_text: str = "the input's folder") -> Any:
     )
 
 
+def gtex_pairs_param() -> Any:
+    return param(
+        None,
+        metavar="TISSUE",
+        help="GTEx significant pairs tissue (e.g. Whole_Blood), instead of SuSiE.",
+    )
+
+
 def threads_param() -> Any:
     return param(
         None,

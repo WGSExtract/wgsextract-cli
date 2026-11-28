@@ -9,23 +9,27 @@ from wgsextract_cli.core.utils import WGSExtractError
 
 
 def run_gtex(params: RefGtexParams) -> None:
-    table = gtex_data.path(str(params.library()))
+    pairs = params.pairs
+    table = gtex_data.path(str(params.library()), pairs)
     cancel = cancel_event()
     published = False
     try:
-        with gtex_data.open_track(table, verify=True, cancel=cancel) as (_, source):
+        with gtex_data.open_track(table, pairs=pairs, verify=True, cancel=cancel) as (
+            _,
+            source,
+        ):
             pass
     except WGSExtractError:
         if not params.download or (cancel and cancel.is_set()):
             raise
-        gtex_data.install(table, cancel=cancel)
-        with gtex_data.open_track(table) as (_, source):
+        gtex_data.install(table, pairs=pairs, cancel=cancel)
+        with gtex_data.open_track(table, pairs=pairs) as (_, source):
             pass
         published = True
-    logging.info("%s: %s", gtex_data.LABEL, table)
+    logging.info("%s: %s", gtex_data.label(pairs), table)
     result = current_result()
     result.set_details({"gtex_source": source})
-    resource_releases.record_pinned("gtex", gtex_data.BUILD, table)
+    resource_releases.record_pinned(gtex_data.resource(pairs), gtex_data.BUILD, table)
     record = result.add_output if published else result.add_input
     record(table, "gtex_track")
     record(gtex_data.receipt_path(table), "gtex_track_provenance")
