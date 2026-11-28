@@ -246,7 +246,8 @@ def test_1180_experimental_changes_need_a_release_note_notice(repo: Path) -> Non
     )
 
     # A mention in the baseline release's own notes is history, not a notice.
-    with (repo / "docs/release-notes/v0.8.9.md").open("a", encoding="utf-8") as old:
+    baseline_notes = repo / "docs/release-notes" / f"{latest_pinned_release(repo)}.md"
+    with baseline_notes.open("a", encoding="utf-8") as old:
         old.write("\n- `wgsextract.report/1:guide` changed.\n")
     assert "experimental_field_removed wgsextract.report/1:guide" in errors(
         contracts.check(repo)
