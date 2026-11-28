@@ -575,6 +575,12 @@ def test_plink2_installs_and_uninstalls_from_its_windows_release(
     assert release.version in row["note"]
     (item,) = _needs(capsys, "--config", str(cfg), *_PLINK2_CHECK)
     assert item["installArguments"][-3:] == ["deps", "install", "plink2"]
+    # The repair hint offers the release, not a Pixi build Windows lacks.
+    code, check = _json(
+        capsys, "--config", str(cfg), "deps", "check", "--tool", "plink2"
+    )
+    assert code != 0
+    assert "Run: wgsextract deps install plink2" in json.dumps(check)
 
     # Mock only the network download boundary: the release's zip holds more
     # programs than plink2, which alone is unpacked.

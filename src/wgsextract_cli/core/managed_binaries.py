@@ -22,12 +22,12 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from wgsextract_cli.core import windows_arm64
 from wgsextract_cli.core.utils import (
     MissingDependencyError,
     UsageError,
     WGSExtractError,
 )
-from wgsextract_cli.core.windows_arm64 import windows_native_machine
 
 ENVIRONMENT = "jartools"  # deps list's label for CLI-managed downloads
 
@@ -136,7 +136,7 @@ def host_platform() -> str | None:
     """This computer's Pixi platform name, where a managed release may apply."""
     machine = platform.machine().lower()
     if sys.platform == "win32":
-        return "win-64" if windows_native_machine() == 0x8664 else None
+        return "win-64" if windows_arm64.windows_native_machine() == 0x8664 else None
     if sys.platform.startswith("linux"):
         return {"x86_64": "linux-64", "aarch64": "linux-aarch64"}.get(machine)
     if sys.platform == "darwin":

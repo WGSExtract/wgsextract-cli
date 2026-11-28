@@ -270,7 +270,7 @@ PIXI_TOOL_ENVS = {
     "cyrius_python": "cyrius",
 }
 # Environments without a Python of their own: their tools are probed from here.
-PIXI_ENVS_WITHOUT_PYTHON = frozenset({"deepvariant", "delly", "java17"})
+PIXI_ENVS_WITHOUT_PYTHON = frozenset({"deepvariant", "delly", "java17", "plink2"})
 
 
 # Interpreters only their own Pixi environment provides (its packages matter).
