@@ -1095,7 +1095,8 @@ test("#1686 upgrading the CLI after a completed 0.8.10 Setup", async (t) => {
   }, async (t) => {
     for (const outcome of ["upgrade", "failure", "cancellation"]) {
       await t.test(outcome, async (t) => {
-        const root = await mkdtemp(path.join(tmpdir(), "wgse-upgrade-"));
+        // macOS may expose the temp dir through /var while PowerShell records its physical path.
+        const root = await realpath(await mkdtemp(path.join(tmpdir(), "wgse-upgrade-")));
         t.after(() => rm(root, { force: true, recursive: true }));
         const runtime = path.join(root, "runtimé");
         const bin = path.join(runtime, "bin");
@@ -1134,7 +1135,7 @@ test("#1686 upgrading the CLI after a completed 0.8.10 Setup", async (t) => {
   $prefix = Join-Path $envs 'fixture/envs/default'
   New-Item -ItemType Directory -Force -Path '.pixi', (Join-Path $prefix 'conda-meta') | Out-Null
   Set-Content -Encoding UTF8 '.pixi/config.toml' "detached-environments = '$envs'"
-  @{manifest_path = (Join-Path $PWD 'pixi.toml')} | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $prefix 'conda-meta/pixi')
+  @{manifest_path = (Join-Path $env:WGSEXTRACT_APP_DIR 'pixi.toml')} | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $prefix 'conda-meta/pixi')
   Set-Content (Join-Path $prefix 'version.txt') '0.9.0'
   ${outcome === "cancellation" ? "Write-Host 'replacement environment written'; Start-Sleep -Seconds 120" : ""}
   exit ${outcome === "failure" ? 23 : 0}
