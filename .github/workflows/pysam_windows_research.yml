@@ -52,6 +52,7 @@ jobs:
         shell: msys2 {0}
         run: |
           set -euxo pipefail
+          mkdir -p out/wheels
           python -m pip install 'Cython>=3,<4' setuptools wheel pytest
           python -m pip wheel --no-build-isolation --no-deps --wheel-dir out/wheels ./scratch/pysam-source 2>&1 | tee out/build.log
           sha256sum out/wheels/*.whl | tee out/wheels/SHA256SUMS
