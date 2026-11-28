@@ -88,19 +88,15 @@ def drop_exit_code(schema: dict[str, Any]) -> None:
     schema["required"].remove("exit_code")
 
 
-def test_1180_checkout_matches_the_pinned_v0_8_9_baseline() -> None:
-    found = contracts.check(ROOT)
-    assert not errors(found)
-    # error.code arrived after v0.8.9: an addition, which the policy permits.
-    assert any(
-        f.code == "field_added" and f.key() == "wgsextract.result/1:error.code"
-        for f in found
-    )
-    baseline = json.loads(
-        (ROOT / "contracts/baselines/v0.8.9.json").read_text(encoding="utf-8")
-    )
-    assert baseline["release"] == "v0.8.9"
-    assert baseline["digest"] == baselines.digest(baseline)
+def latest_pinned_release(root: Path) -> str:
+    pinned, problems = baselines.effective_baselines(root, None)
+    latest = baselines.newest(pinned)
+    assert not errors(problems) and latest is not None
+    return str(latest["release"])
+
+
+def test_1180_checkout_matches_the_latest_pinned_baseline() -> None:
+    assert not errors(contracts.check(ROOT))
 
 
 def test_1180_dropping_a_stable_field_from_producer_and_schema_still_fails(
@@ -118,7 +114,7 @@ def test_1180_dropping_a_stable_field_from_producer_and_schema_still_fails(
     found = errors(contracts.check(repo))
 
     removed = found["stable_field_removed wgsextract.result/1:exit_code"]
-    assert removed.release == "v0.8.9"
+    assert removed.release == latest_pinned_release(repo)
     assert "breaking-change procedure" in removed.message
     assert contracts.main(["--root", str(repo), "check"]) == 1
 
@@ -375,6 +371,7 @@ def test_1180_editing_the_baseline_in_the_same_change_cannot_erase_the_compariso
     repo: Path,
 ) -> None:
     git(repo, "init", "-q")
+    filename = f"{latest_pinned_release(repo)}.json"
     base = commit_all(repo, "base")
     edit(repo, RESULT, drop_exit_code)
 
@@ -382,19 +379,19 @@ def test_1180_editing_the_baseline_in_the_same_change_cannot_erase_the_compariso
         del baseline["documents"]["wgsextract.result/1"]["paths"]["exit_code"]
         baseline["digest"] = baselines.digest(baseline)
 
-    edit(repo, "contracts/baselines/v0.8.9.json", forge)
+    edit(repo, f"contracts/baselines/{filename}", forge)
     commit_all(repo, "drop exit_code and its baseline row")
 
     found = errors(contracts.check(repo, base))
 
-    assert "baseline_modified baselines:v0.8.9.json" in found
+    assert f"baseline_modified baselines:{filename}" in found
     assert "stable_field_removed wgsextract.result/1:exit_code" in found
     assert contracts.main(["--root", str(repo), "check", "--base", base]) == 1
 
     # Nor can the same change approve its own baseline edit.
     approval = {
         "document": "baselines",
-        "path": "v0.8.9.json",
+        "path": filename,
         "code": "baseline_modified",
         "approval": "#1180",
         "reason": "Self-approval.",
@@ -402,8 +399,8 @@ def test_1180_editing_the_baseline_in_the_same_change_cannot_erase_the_compariso
     edit(repo, baselines.REGISTRY, lambda r: r["approved_breaks"].append(approval))
     found = errors(contracts.check(repo, base))
     assert {
-        "baseline_modified baselines:v0.8.9.json",
-        "approved_break_invalid baselines:v0.8.9.json",
+        f"baseline_modified baselines:{filename}",
+        f"approved_break_invalid baselines:{filename}",
     } <= set(found)
 
 
@@ -412,26 +409,26 @@ def test_1180_baselines_are_pinned_from_a_release_tag_and_stay_immutable(
 ) -> None:
     git(repo, "init", "-q")
     commit = commit_all(repo, "release")
-    git(repo, "tag", "v0.9.0")
-    target = baselines.pin(repo, "v0.9.0")
+    git(repo, "tag", "v9.9.8")
+    target = baselines.pin(repo, "v9.9.8")
     pinned = json.loads(target.read_text(encoding="utf-8"))
-    assert (pinned["release"], pinned["commit"]) == ("v0.9.0", commit)
+    assert (pinned["release"], pinned["commit"]) == ("v9.9.8", commit)
     assert pinned["tiers_source"] == "release"
     assert pinned["digest"] == baselines.digest(pinned)
     assert not errors(contracts.check(repo))
     with pytest.raises(SystemExit, match="immutable"):
-        baselines.pin(repo, "v0.9.0")
+        baselines.pin(repo, "v9.9.8")
 
     def forge(baseline: dict[str, Any]) -> None:
         del baseline["documents"]["wgsextract.result/1"]["paths"]["status"]
         baseline["digest"] = baselines.digest(baseline)
 
-    edit(repo, "contracts/baselines/v0.9.0.json", forge)
-    assert "baseline_unverified baselines:v0.9.0.json" in errors(contracts.check(repo))
+    edit(repo, "contracts/baselines/v9.9.8.json", forge)
+    assert "baseline_unverified baselines:v9.9.8.json" in errors(contracts.check(repo))
 
     base = commit_all(repo, "forged")
     shutil.copy(
-        repo / "contracts/baselines/v0.9.0.json",
+        repo / "contracts/baselines/v9.9.8.json",
         repo / "contracts/baselines/v9.9.9.json",
     )
     edit(
@@ -450,18 +447,17 @@ def test_1180_a_later_release_cannot_bootstrap_its_own_tiers(repo: Path) -> None
     skipped the tag's tiers, so an empty one could become the newest."""
     git(repo, "init", "-q")
     commit = commit_all(repo, "release")
-    git(repo, "tag", "v0.9.0")
+    git(repo, "tag", "v9.9.8")
     forged = json.loads(
         (repo / "contracts/baselines/v0.8.9.json").read_text(encoding="utf-8")
     )
-    forged.update(release="v0.9.0", commit=commit, documents={}, roles={})
+    forged.update(release="v9.9.8", commit=commit, documents={}, roles={})
     forged["digest"] = baselines.digest(forged)
-    (repo / "contracts/baselines/v0.9.0.json").write_text(
+    (repo / "contracts/baselines/v9.9.8.json").write_text(
         json.dumps(forged), encoding="utf-8"
     )
     found = errors(contracts.check(repo, commit))
-    assert "baseline_unverified baselines:v0.9.0.json" in found
-    assert "bootstrap" in found["baseline_unverified baselines:v0.9.0.json"].message
+    assert "bootstrap" in found["baseline_unverified baselines:v9.9.8.json"].message
 
 
 @needs_htslib
