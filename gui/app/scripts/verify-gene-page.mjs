@@ -11,6 +11,7 @@ import { loadLocalizedBundle } from "../dist/web/src/server/bundle-loader.js";
 import { createProcessManager } from "../dist/web/src/server/process-runner.js";
 import { createRequestHandler } from "../dist/web/src/server/routes.js";
 import { registerUsersWorkspace } from "../dist/web/src/server/users-workspace.js";
+import { offlineCliAppDir } from "./offline-cli-runtime.mjs";
 import { configureOfflineVerification } from "./offline-verification-settings.mjs";
 
 const root = path.resolve(import.meta.dirname, "../../..");
@@ -104,7 +105,7 @@ const handler = createRequestHandler({
     ...loaded, apiToken: "offline-verification-only", bundleRoot, repoRoot: path.join(root, "gui"),
     distRoot: path.join(root, "gui/app/dist"), webRoot: path.join(root, "gui/app/web"),
     maxBodyBytes: 1048576, dynamicActions: new Map(),
-    runProcess: (script, args, options) => manager.runProcess(script, args, { ...options, env: { ...options.env, WGSEXTRACT_APP_DIR: cli } }),
+    runProcess: (script, args, options) => manager.runProcess(script, args, { ...options, env: { ...options.env, WGSEXTRACT_APP_DIR: cliRuntime.appDir } }),
     localizedBundleLoader: { load }, enableDevReload: false, addDevReloadClient() {},
 });
 const server = createServer(handler);
@@ -113,6 +114,8 @@ const url = `http://127.0.0.1:${server.address().port}`;
 const browser = await chromium.launch({ executablePath: values.chromium, headless: true });
 const external = [];
 const errors = [];
+// Created right before the try so its finally removes it (requests that use it start inside).
+const cliRuntime = await offlineCliAppDir(cli);
 try {
     const context = await browser.newContext({ viewport: { width: 1440, height: 1100 }, serviceWorkers: "block" });
     await context.route("**/*", (route) => {
@@ -213,8 +216,12 @@ try {
     console.error(JSON.stringify({ errors, external }, null, 2));
     throw error;
 } finally {
-    await browser.close();
-    await manager.terminateAllProcesses();
-    server.closeAllConnections();
-    await new Promise((resolve) => server.close(resolve));
+    try {
+        await browser.close();
+        await manager.terminateAllProcesses();
+        server.closeAllConnections();
+        await new Promise((resolve) => server.close(resolve));
+    } finally {
+        await cliRuntime.dispose();
+    }
 }

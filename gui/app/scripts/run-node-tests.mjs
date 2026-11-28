@@ -38,6 +38,7 @@ const defaultTests = [
   "tests/genome-viewer.test.mjs",
   "tests/gene-page.test.mjs",
   "tests/viewer-memory.test.mjs",
+  "tests/offline-cli-runtime.test.mjs",
   "tests/viewer-files.test.mjs",
   "tests/viewer-session.test.mjs",
   "tests/viewer-library.test.mjs",
