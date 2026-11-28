@@ -5,17 +5,26 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
+import time
 from collections.abc import Iterable
+from datetime import timezone
+from email.utils import parsedate_to_datetime
 from fnmatch import fnmatchcase
 from functools import cache
+from http.client import IncompleteRead, RemoteDisconnected
 from pathlib import Path
+from socket import EAI_AGAIN, gaierror
+from ssl import SSLEOFError
 from typing import Any
+from urllib.error import HTTPError, URLError
 from urllib.parse import unquote, urlsplit
 from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
+MAX_RETRY_AFTER = 120
 
 
 def snapshot(root: Path) -> dict[str, dict[str, Any]]:
@@ -111,15 +120,91 @@ def github_assets(owner: str, repo: str, tag: str) -> dict[str, dict[str, Any]]:
     return {asset["name"]: asset for page in pages for asset in page}
 
 
-def check_url(url: str, pin: dict[str, Any]) -> None:
-    request = Request(
-        url, headers={"Range": "bytes=0-0", "User-Agent": "wgsextract-cli"}
+def _transient(error: OSError) -> bool:
+    if isinstance(error, HTTPError):
+        return error.code == 429 or 500 <= error.code < 600
+    reason: str | BaseException | None = (
+        error.reason if isinstance(error, URLError) else error
     )
-    with urlopen(request, timeout=60) as response:
-        if not response.read(1):
-            raise ValueError("empty response")
-        if not url.startswith("ftp://") and response.status not in (200, 206):
-            raise ValueError(f"HTTP {response.status}")
+    if isinstance(reason, str):
+        reason = error.__cause__  # Some urllib versions stringify FTP failures.
+    if isinstance(reason, gaierror):
+        return reason.errno == EAI_AGAIN
+    if isinstance(error, URLError) and isinstance(reason, EOFError):
+        return True  # ftplib uses EOFError when the server closes before replying.
+    return isinstance(
+        reason,
+        (
+            ConnectionRefusedError,
+            ConnectionResetError,
+            SSLEOFError,
+            TimeoutError,
+        ),
+    )
+
+
+def _retry_after(error: OSError) -> float:
+    if not isinstance(error, HTTPError) or error.headers is None:
+        return 0.0
+    value = error.headers.get("Retry-After")
+    if value is None:
+        return 0.0
+    value = value.strip()
+    if value.isascii() and value.isdecimal():
+        return float(value)
+    try:
+        date = parsedate_to_datetime(value)
+        if date.tzinfo is None:
+            date = date.replace(tzinfo=timezone.utc)
+        return max(0.0, date.timestamp() - time.time())
+    except (ValueError, OverflowError, OSError):
+        return 0.0
+
+
+def _probe_url(url: str) -> int:
+    headers = {"Range": "bytes=0-0", "User-Agent": "wgsextract-cli"}
+    backoffs = iter((5, 20))
+    attempts = 1
+    while True:
+        try:
+            with urlopen(Request(url, headers=headers), timeout=60) as response:
+                if not url.startswith("ftp://") and response.status not in (200, 206):
+                    raise ValueError(f"HTTP {response.status}")
+                try:
+                    first_byte = response.read(1)
+                except IncompleteRead as exc:
+                    raise RemoteDisconnected(
+                        "connection closed before response body"
+                    ) from exc
+                if not first_byte:
+                    ranged = getattr(response, "status", None) == 206 and re.fullmatch(
+                        r"bytes 0-[0-9]+/(?:[1-9][0-9]*|\*)",
+                        response.headers.get("Content-Range", ""),
+                    )
+                    if getattr(response, "length", 0) or ranged:
+                        raise RemoteDisconnected(
+                            "connection closed before response body"
+                        )
+                    raise ValueError("empty response")
+        except OSError as exc:
+            if isinstance(exc, HTTPError):
+                exc.close()
+            delay = next(backoffs, None)
+            if delay is None or not _transient(exc):
+                raise
+            retry_after = _retry_after(exc)
+            if retry_after > MAX_RETRY_AFTER:
+                raise ValueError(
+                    f"{exc}; Retry-After exceeds {MAX_RETRY_AFTER}s"
+                ) from exc
+            time.sleep(max(delay, retry_after))
+            attempts += 1
+        else:
+            return attempts
+
+
+def check_url(url: str, pin: dict[str, Any]) -> int:
+    attempts = _probe_url(url)
     if pin:
         parsed = urlsplit(url)
         parts = [unquote(part) for part in parsed.path.strip("/").split("/")]
@@ -138,9 +223,10 @@ def check_url(url: str, pin: dict[str, Any]) -> None:
             raise ValueError(
                 "MIRROR_INTEGRITY: GitHub asset digest/size differs from manifest"
             )
+    return attempts
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     selection = parser.add_mutually_exclusive_group()
     selection.add_argument(
@@ -151,7 +237,7 @@ def main() -> int:
         help="Run live behavior tests affected since the PR base SHA",
     )
     parser.add_argument("--out", type=Path, default=ROOT / "out/remote-urls.json")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     base_sha = args.base or args.live_tests_base
     if base_sha and (
         not all(c in "0123456789abcdef" for c in base_sha) or len(base_sha) != 40
@@ -196,7 +282,7 @@ def main() -> int:
     failures = []
     for url, pin in urls.items():
         try:
-            check_url(url, pin)
+            attempts = check_url(url, pin)
         except (OSError, ValueError, subprocess.SubprocessError) as exc:
             from wgsextract_cli.core.resource_mirrors import resources
 
@@ -209,7 +295,8 @@ def main() -> int:
             failures.append(f"{url}: {exc}{rights}")
             print(f"FAILED {url}: {exc}{rights}", flush=True)
         else:
-            print(f"OK {url}", flush=True)
+            retry = f" (after {attempts} attempts)" if attempts > 1 else ""
+            print(f"OK {url}{retry}", flush=True)
     print(f"Checked {len(urls)} URLs; {len(failures)} failures.")
     return int(bool(failures))
 

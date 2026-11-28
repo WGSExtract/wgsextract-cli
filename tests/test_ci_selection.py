@@ -249,6 +249,12 @@ def test_1637_reference_certification_test_edits_stay_in_policy_lane() -> None:
     assert path in ci_test_targets([path])
 
 
+def test_1692_remote_audit_edits_run_the_loopback_tests_in_the_policy_lane() -> None:
+    paths = ["scripts/check_remote_resources.py"]
+    assert not routes(paths)["cli"]
+    assert "tests/test_check_remote_resources.py" in ci_test_targets(paths)
+
+
 def test_1339_shadow_regressions_only_run_in_the_ci_policy_lane() -> None:
     paths = sorted(
         path.relative_to(ROOT).as_posix()
