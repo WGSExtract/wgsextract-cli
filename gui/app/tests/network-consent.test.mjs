@@ -168,8 +168,10 @@ test("#1674 bootstrap accepts both the pinned CLI and the network-aware tree", a
     t.after(() => manager.terminateAllProcesses());
     const run = withCliNetworkPolicy(manager.runProcess);
     const warnings = [];
+    const env = Object.fromEntries(Object.entries(process.env)
+        .filter(([key]) => !["WGSEXTRACT_APP_DIR", "WGSEXTRACT_GUI_APP_DATA"].includes(key.toUpperCase())));
     const launch = (target, flags, variable, value) => run(executable, [...args, target, ...flags], {
-        cwd: root, env: { ...process.env, [windows ? variable.toLowerCase() : variable]: value },
+        cwd: root, env: { ...env, [windows ? variable.toLowerCase() : variable]: value },
         onStderr: (text) => warnings.push(text),
     });
     const bootstrap = (...flags) => launch(script, flags, "WGSEXTRACT_APP_DIR", appDir);
