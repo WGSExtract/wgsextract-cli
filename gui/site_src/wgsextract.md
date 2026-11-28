@@ -44,7 +44,7 @@ WGSExtract exercises data sources, state-dependent actions, persisted settings, 
 ::: wrap
 ## What the app exposes
 
-The desktop app bundles **WGSExtract CLI v0.9.0**. A **Basic / Advanced** switch in the sidebar keeps everyday controls up front; Advanced mode covers the CLI's remaining user options, and Basic runs commands with the hidden settings at their defaults. Nanopore reads work through the actions already in the app with no settings to change, and opt-in controls cover the rest. They start blank or unchecked, so automatic detection and `config.toml` defaults keep applying.
+The desktop app bundles **WGSExtract CLI v0.9.0**. Basic mode keeps everyday controls up front. Advanced mode shows more options, but experimental bonefish alignment is available only from the CLI. Hidden settings use their defaults in Basic mode. Nanopore reads work through the actions already in the app, and opt-in controls start blank or unchecked so automatic detection and `config.toml` defaults keep applying.
 
 ### Oxford Nanopore in existing actions
 
