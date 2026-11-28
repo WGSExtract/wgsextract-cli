@@ -569,6 +569,7 @@ def _publish_chain(
             files,
             retire=list(indexes.values()),
             checkpoint=checkpoint,
+            finalize=outputs.close if table is not None else None,
         )
     return metrics
 

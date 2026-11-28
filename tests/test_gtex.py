@@ -312,6 +312,41 @@ def test_1662_failed_gtex_chain_rebuild_keeps_sidecar_and_can_retry(
     assert sidecar.read_bytes() != previous_sidecar
 
 
+def test_1662_failed_sidecar_rename_rolls_back_the_chain_vcf(
+    tmp_path, sample, gtex_bundle, monkeypatch
+):
+    library = tmp_path / "library"
+    api.ref.gtex(api.RefGtexParams(ref=library, download=True))
+    out = tmp_path / "chain"
+    common = {
+        "input": sample, "ref": library, "outdir": out, "annotations": "gtex",
+        "network": "off",
+    }  # fmt: skip
+    api.vcf.chain_annotate(api.VcfChainAnnotateParams(**common))
+    final = out / "chain_annotated.vcf.gz"
+    index = final.with_suffix(".gz.tbi")
+    sidecar = out / "chain_gtex_eqtl.tsv"
+    previous = {p: p.read_bytes() for p in (final, index, sidecar)}
+    replace = os.replace
+
+    def deny_sidecar_replace(src, dest, *args, **kwargs):
+        if Path(dest) == sidecar:
+            raise PermissionError("The sidecar is locked.")
+        return replace(src, dest, *args, **kwargs)
+
+    with monkeypatch.context() as fs:
+        fs.setattr(os, "replace", deny_sidecar_replace)
+        with pytest.raises(api.CommandFailed, match="The sidecar is locked"):
+            api.vcf.chain_annotate(
+                api.VcfChainAnnotateParams(**common, region="1:10-10")
+            )
+    assert {p: p.read_bytes() for p in previous} == previous
+    retry = api.vcf.chain_annotate(
+        api.VcfChainAnnotateParams(**common, region="1:10-10")
+    )
+    assert retry.metrics["gtex_associations"] == 4
+
+
 def test_1662_gtex_bad_checksum_does_not_install(tmp_path, gtex_bundle):
     server, name = gtex_bundle
     library = tmp_path / "library"
