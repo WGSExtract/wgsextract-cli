@@ -4,6 +4,7 @@ result manifest."""
 
 import csv
 import gc
+import io
 import json
 import warnings
 from pathlib import Path
@@ -129,12 +130,20 @@ def test_1473_variant_confidence_closes_subprocess_pipes(tmp_path: Path) -> None
     source = _vcf(tmp_path / "sample.vcf.gz", ["100 . A G 50 PASS . GT 0/1"])
     labelled = tmp_path / "labelled.vcf.gz"
     thresholds = Thresholds(min_depth=10, high_depth=20, min_gq=20, high_gq=30)
+    gc.collect()
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always", ResourceWarning)
         summary = label_vcf(source, labelled, thresholds)
         gc.collect()
 
-    assert not [w.message for w in caught if issubclass(w.category, ResourceWarning)]
+    # #1683: subprocess pipes are file streams named by a descriptor, not sockets.
+    assert not [
+        w.message
+        for w in caught
+        if issubclass(w.category, ResourceWarning)
+        and isinstance(w.source, io.IOBase)
+        and isinstance(getattr(w.source, "name", None), int)
+    ]
     assert summary.carried == 1
     assert [row.split(":")[0] for row in _labels(labelled)] == ["100"]
 
