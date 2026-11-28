@@ -88,6 +88,7 @@ def sample(tmp_path: Path) -> Path:
         "1\t20\t.\tA\tAT\t.\tPASS\t.\n"
         "1\t30\t.\tG\t<NON_REF>\t.\tPASS\t.\n",
         encoding="utf-8",
+        newline="\n",
     )
     return input_vcf
 
@@ -122,7 +123,7 @@ def test_1662_ref_gtex_needs_explicit_download(
     assert status.details["gtex"]["installed"]
     fasta = tmp_path / "external" / "GRCh38.fa"
     fasta.parent.mkdir()
-    fasta.write_text(">chr1\nA\n", encoding="utf-8")
+    fasta.write_text(">chr1\nA\n", encoding="utf-8", newline="\n")
     monkeypatch.setitem(settings, "reference_library", str(library))
     status = api.ref.status(api.RefStatusParams(ref=fasta, network="off"))
     assert status.details["gtex"]["installed"]
@@ -152,7 +153,9 @@ def test_1662_exact_alt_retains_tissue_gene_set_and_effect(
         annotations, region = "gtex", None
         if mode == "scoped-screen-chain":
             bed = tmp_path / "screen.bed"
-            bed.write_text("chr1\t9\t10\tEH38D1\tEH38E1\tPLS\n", encoding="utf-8")
+            bed.write_text(
+                "chr1\t9\t10\tEH38D1\tEH38E1\tPLS\n", encoding="utf-8", newline="\n"
+            )
             api.ref.regulatory(api.RefRegulatoryParams(ref=library, bed=bed))
             annotations, region = "gtex,regulatory", "1:10-10"
         result = api.vcf.chain_annotate(
@@ -290,9 +293,10 @@ def test_1662_gtex_refuses_grch37_without_replacing_sidecar(tmp_path, sample):
     sample.write_text(
         sample.read_text(encoding="utf-8").replace("248956422", "249250621"),
         encoding="utf-8",
+        newline="\n",
     )
     old = tmp_path / "gtex_eqtl.tsv"
-    old.write_text("previous successful output\n", encoding="utf-8")
+    old.write_text("previous successful output\n", encoding="utf-8", newline="\n")
     with pytest.raises(
         api.CommandFailed, match="GTEx annotation requires a GRCh38 VCF"
     ):

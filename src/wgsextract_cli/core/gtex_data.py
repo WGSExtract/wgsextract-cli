@@ -278,7 +278,9 @@ def install(table: Path, *, cancel: CancelEvent | None = None) -> None:
             with closing(sqlite3.connect(staged)) as db:
                 _load(archive, db, cancel)
             document = {**source, "database_sha256": _sha256(staged, cancel)}
-            receipt.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+            receipt.write_text(
+                json.dumps(document, indent=2) + "\n", encoding="utf-8", newline="\n"
+            )
         except (
             ArrowException,
             tarfile.TarError,
