@@ -163,17 +163,23 @@ def run_ready(params: DepsReadyParams) -> None:
 
 def run_install(params: DepsInstallParams) -> None:
     """``deps install``."""
-    details = optional_tools.install(params.tool)
+    details = optional_tools.install(params.tool, accept_license=params.accept_license)
     current_result().set_details(details)
     human_output(f"Installed {params.tool} ({details['path']}).")
+    if license := details.get("license"):
+        human_output(
+            f"{params.tool} is licensed under the {license['name']}: "
+            f"{license['terms']} ({license['url']})."
+        )
 
 
 def run_uninstall(params: DepsUninstallParams) -> None:
     """``deps uninstall``."""
     details = optional_tools.uninstall(params.tool)
     current_result().set_details(details)
-    if details.get("jar_path"):
-        human_output(f"Removed {params.tool} ({details['jar_path']}).")
+    if details["environment"] == "jartools":
+        removed = details.get("jar_path") or details["path"]
+        human_output(f"Removed {params.tool} ({removed}).")
         return
     human_output(
         f"Removed the Pixi environment '{details['environment']}' "

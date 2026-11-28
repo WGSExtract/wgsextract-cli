@@ -1276,6 +1276,11 @@
 "columns.tools.tool-management.tools.name.title" = "Werkzeug"  # i18n-source-hash:9a830c71
 "columns.tools.tool-management.tools.details.title" = "Version oder Hinweis"  # i18n-source-hash:394721b1
 "columns.tools.tool-management.tools.environment.title" = "Pixi-Umgebung"  # i18n-source-hash:56378800
+"actions.tools.tool-management.tool-install-licensed.confirm.confirmButtonTitle" = "Akzeptieren und installieren"  # i18n-source-hash:e436e842
+"actions.tools.tool-management.tool-install-licensed.confirm.message" = "{{row.name}} steht unter der {{row.license}}: {{row.licenseTerms}}. Lesen Sie sie unter {{row.licenseUrl}}. Installieren Sie es nur, wenn Sie diese Bedingungen akzeptieren."  # i18n-source-hash:d089e2ea
+"actions.tools.tool-management.tool-install-licensed.confirm.title" = "Lizenz von {{row.name}} akzeptieren?"  # i18n-source-hash:149ec63b
+"actions.tools.tool-management.tool-install-licensed.title" = "Installieren"  # i18n-source-hash:fd6c3ebf
+"actions.tools.tool-management.tool-install-licensed.tooltip" = "Lädt dieses Werkzeug herunter und installiert es, sobald Sie seine Lizenz akzeptieren (wgsextract deps install --accept-license)."  # i18n-source-hash:bc531c87
 "actions.tools.tool-management.tool-install.title" = "Installieren"  # i18n-source-hash:fd6c3ebf
 "actions.tools.tool-management.tool-install.tooltip" = "Lädt dieses optionale Werkzeug herunter und installiert es (wgsextract deps install)."  # i18n-source-hash:3601154c
 "actions.tools.tool-management.tool-uninstall.title" = "Deinstallieren"  # i18n-source-hash:a735da1d

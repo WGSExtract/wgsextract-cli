@@ -52,7 +52,10 @@
               "environment": "{{environment}}",
               "environmentTools": "{{environmentTools}}",
               "action": "{{action}}",
-              "note": "{{note}}"
+              "note": "{{note}}",
+              "license": "{{license}}",
+              "licenseTerms": "{{licenseTerms}}",
+              "licenseUrl": "{{licenseUrl}}"
             }
           },
           "rowActions": [
@@ -74,6 +77,34 @@
                 {
                   "placeholder": "row.action",
                   "equals": "install"
+                }
+              ]
+            },
+            {
+              "id": "tool-install-licensed",
+              "title": "actions.tools.tool-management.tool-install-licensed.title",
+              "tooltip": "actions.tools.tool-management.tool-install-licensed.tooltip",
+              "command": {
+                "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+                "arguments": [
+                  "deps",
+                  "install",
+                  "{{row.name}}",
+                  "--accept-license"
+                ]
+              },
+              "confirm": {
+                "title": "actions.tools.tool-management.tool-install-licensed.confirm.title",
+                "message": "actions.tools.tool-management.tool-install-licensed.confirm.message",
+                "confirmButtonTitle": "actions.tools.tool-management.tool-install-licensed.confirm.confirmButtonTitle",
+                "cancelButtonTitle": "actions.library.genome-management.ref-delete.confirm.cancelButtonTitle"
+              },
+              "iconName": "download",
+              "textIcon": "⬇️",
+              "visibleWhen": [
+                {
+                  "placeholder": "row.action",
+                  "equals": "install-licensed"
                 }
               ]
             },

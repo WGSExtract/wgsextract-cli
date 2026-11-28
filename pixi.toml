@@ -254,6 +254,16 @@ platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64"]
 [feature.somalier.dependencies]
 somalier = ">=0.3.7,<0.4"
 
+# PLINK 2 cross-checks a PGS Catalog score's matched-set sum
+# (`score pgs --plink2-check`). Opt-in environment (`pixi install -e plink2`);
+# Bioconda builds it for Linux and macOS, not Windows, where
+# `wgsextract deps install plink2` downloads the official build instead.
+[feature.plink2]
+platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64"]
+
+[feature.plink2.dependencies]
+plink2 = ">=2.0.0b1.post4,<2.1"
+
 # fastVEP classifies variants by ACMG/AMP criteria for the opt-in, research-only
 # `vcf acmg`. Opt-in environment (`pixi install -e fastvep`), on all five
 # supported platforms. CLI-only WGS Extract builds of upstream 0.5.0 from
@@ -534,6 +544,7 @@ deepvariant = { features = ["deepvariant"], no-default-feature = true }
 modkit = { features = ["standard-platforms", "modkit"], no-default-feature = true }
 verifybamid2 = { features = ["standard-platforms", "verifybamid2"], no-default-feature = true }
 somalier = { features = ["standard-platforms", "somalier"], no-default-feature = true }
+plink2 = { features = ["standard-platforms", "plink2"], no-default-feature = true }
 fastvep = { features = ["standard-platforms", "fastvep"], no-default-feature = true }
 phasing = { features = ["standard-platforms", "phasing"], no-default-feature = true }
 smn = { features = ["standard-platforms", "smn"], no-default-feature = true }

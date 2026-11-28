@@ -234,6 +234,13 @@ def pixi_install_command(tool: str) -> str | None:
     env = PIXI_TOOL_ENVS.get(tool)
     if env is None:
         return None
+    from wgsextract_cli.core import managed_binaries
+
+    if managed_binaries.managed_binary(tool):
+        return f"wgsextract deps install {tool}"
+    if tool in managed_binaries.MANAGED_BINARIES and runtime.is_windows_host():
+        # A release replaces the Pixi build only where Pixi has none.
+        return None
     pixi_cmd = _resolve_pixi_command()
     if pixi_cmd and not _locked_package_available(pixi_cmd, env, tool):
         return None

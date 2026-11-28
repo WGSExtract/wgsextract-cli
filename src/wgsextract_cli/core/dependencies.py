@@ -112,6 +112,13 @@ def managed_jar_dir() -> Path:
     return runtime.app_data_root() / "jartools"
 
 
+def managed_executable(tool: str) -> str | None:
+    """``tool`` as ``deps install`` unpacked it from its official release."""
+    from wgsextract_cli.core.managed_binaries import managed_executable
+
+    return managed_executable(tool)
+
+
 def find_discvrseq_jar(explicit: str | None = None) -> str | None:
     """Locate DISCVRseq.jar from explicit path, config discvrseq_jar, or jartools folders."""
     from wgsextract_cli.core.config import settings
@@ -207,7 +214,9 @@ def _resolve_tool_path(tool: str) -> str | None:
                 return str(resolved)
     if tool == "multiqc":
         return _host_pixi_tool_command("multiqc") or _which_tool("multiqc")
-    return _which_tool(tool) or _host_pixi_tool_command(tool)
+    return (
+        _which_tool(tool) or managed_executable(tool) or _host_pixi_tool_command(tool)
+    )
 
 
 def check_dependencies(tool_list: list[str], jar_dir: str | None = None) -> list[str]:
