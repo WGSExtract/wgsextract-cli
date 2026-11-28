@@ -332,7 +332,6 @@ if (-not (Test-Path -LiteralPath (Join-Path $UsersWorkspace ".bundle-workspace")
     (Test-Path -LiteralPath (Join-Path $OldWorkspace ".bundle-workspace"))) {
     $Workspace = $OldWorkspace
 }
-$env:GUI_FOR_CLI_APP_SUPPORT_NAME = $AppIdentifier
 $BundleRunner = Join-Path $InstallDir "app\dist\web\src\server\bundle-test-cli.js"
 # Released apps before the single-app layout use platform/typescript.
 if (-not (Test-Path -LiteralPath $BundleRunner)) {
@@ -343,8 +342,13 @@ $ActionArgs = @((Join-Path $InstallDir "node\node.exe"),
     "--plan", (Join-Path (Split-Path $PSScriptRoot) "gui-plan.json"), "--workspace", $Workspace) + $UsersArgs + @(
     "--report", (Join-Path $R "bundle-report.json"), "--log", (Join-Path $R "bundle-test.log"),
     (Join-Path $InstallDir "examples\EmbeddedBundle"))
-Step "actions" $ActionArgs $InstallDir
-Remove-Item Env:GUI_FOR_CLI_APP_SUPPORT_NAME
+$env:WGSEXTRACT_GUI_APP_DATA_NAME = Split-Path -Leaf $AppData
+$env:GUI_FOR_CLI_APP_SUPPORT_NAME = $AppIdentifier
+try {
+    Step "actions" $ActionArgs $InstallDir
+} finally {
+    Remove-Item Env:WGSEXTRACT_GUI_APP_DATA_NAME, Env:GUI_FOR_CLI_APP_SUPPORT_NAME
+}
 # The oracle reads outputs where the CLI lab keeps them.
 if (Test-Path -LiteralPath (Join-Path $Workspace "lab-output")) {
     Copy-Item -Path (Join-Path $Workspace "lab-output\*") -Destination (Join-Path $R "workload") -Recurse -Force
