@@ -25,7 +25,8 @@ jobs:
           persist-credentials: false
           repository: smeng9/pysam
           ref: af64d6505174a5dd8b904f624d7fa17632401755
-          path: out/pysam-source
+          # Fork emits unescaped checkout paths in C metadata; \out fails as a C escape.
+          path: scratch/pysam-source
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.13'
@@ -47,11 +48,12 @@ jobs:
             mingw-w64-ucrt-x86_64-htslib
             mingw-w64-ucrt-x86_64-samtools
       - name: Build and install wheel
+        id: wheel
         shell: msys2 {0}
         run: |
           set -euxo pipefail
           python -m pip install 'Cython>=3,<4' setuptools wheel pytest
-          python -m pip wheel --no-build-isolation --no-deps --wheel-dir out/wheels ./out/pysam-source 2>&1 | tee out/build.log
+          python -m pip wheel --no-build-isolation --no-deps --wheel-dir out/wheels ./scratch/pysam-source 2>&1 | tee out/build.log
           sha256sum out/wheels/*.whl | tee out/wheels/SHA256SUMS
           python -m pip install --no-deps out/wheels/*.whl
       - name: Installed wheel smoke without MSYS2 on PATH
@@ -87,13 +89,13 @@ jobs:
           '@ | python - | Tee-Object -FilePath out/smoke.log
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Run fork test suite against installed wheel
-        if: always() && !cancelled()
+        if: always() && !cancelled() && steps.wheel.outcome == 'success'
         shell: msys2 {0}
         run: |
           set -euxo pipefail
-          cd out/pysam-source
+          cd scratch/pysam-source
           python -P -c "import pysam; print(pysam.__file__); assert 'site-packages' in pysam.__file__"
-          PYTHONPATH="" pytest --junitxml=../pytest.xml --basetemp=../pytest-temp -ra 2>&1 | tee ../pytest.log
+          PYTHONPATH="" pytest --junitxml=../../out/pytest.xml --basetemp=../../out/pytest-temp -ra 2>&1 | tee ../../out/pytest.log
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
