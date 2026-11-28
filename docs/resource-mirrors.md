@@ -136,7 +136,13 @@ asset SHA-256 and size are compared with local pins without downloading ~1 TB
 each night. Complete byte checks run during publication and every on-demand
 mirror download. PR URL probes compare resolved inventories at base and head
 and visit only added/changed URLs; an unrelated upstream outage cannot block a
-PR. See [CI routing](ci_routing.md).
+PR. The probes retry transient connection failures and HTTP 429/5xx up to
+three total attempts, waiting at least 5 seconds and then 20 seconds (or longer
+if `Retry-After` asks for it). If a server asks for more than 120 seconds, the
+probe reports a failure rather than retrying sooner or blocking the audit.
+The log marks URLs that passed after retries.
+Missing resources and integrity mismatches fail immediately. See
+[CI routing](ci_routing.md).
 Changes to annotation resource code retain live SpliceAI format/score tests;
 changes to gene-list code or manifests retain live gene-list downloads and pin
 checks on PRs, even when their URLs did not change.
