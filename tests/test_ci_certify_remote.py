@@ -29,7 +29,10 @@ def remote_pr(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]
         ["git", "init", "-q", "-b", "ci/evil;echo-owned", "repo"], check=True
     )
     monkeypatch.chdir(tmp_path / "repo")
-    Path(".gitignore").write_text("out/\n")
+    Path("config.toml").write_text(
+        '[[certification.hosts]]\nalias = "mac-fixture"\nplatform = "macos-arm64"\n'
+    )
+    Path(".gitignore").write_text("out/\nconfig.toml\n")
     subprocess.run(["git", "add", ".gitignore"], check=True)
     subprocess.run(
         [
@@ -118,7 +121,7 @@ def transport(
                 result_platform
                 if remote_environment is not None
                 else "macos-arm64"
-                if alias == "randy-mini"
+                if alias == "mac-fixture"
                 else "windows-x64"
             )
             result = {
@@ -188,7 +191,7 @@ def transport(
 def certify(
     pr: dict[str, Any],
     *,
-    remote: str = "randy-mini",
+    remote: str = "mac-fixture",
     generic: bool = False,
     config: Path = Path("config.toml"),
     prepared_only: bool = False,
@@ -216,12 +219,12 @@ def test_972_remote_success_streams_and_posts_local_log_digest(
     statuses, locks = transport(monkeypatch, remote_pr)
     certify(remote_pr)
     sha = remote_pr["head"]["sha"]
-    log = Path("out/certify") / sha / "remote-randy-mini/macos-arm64/run.log"
+    log = Path("out/certify") / sha / "remote-mac-fixture/macos-arm64/run.log"
     digest = hashlib.sha256(log.read_bytes()).hexdigest()
     assert "live remote test output" in capsys.readouterr().out
     assert "live remote test output" in log.read_text()
     assert [status["state"] for status in statuses] == ["pending", "success"]
-    assert "randy-mini" in statuses[-1]["description"]
+    assert "mac-fixture" in statuses[-1]["description"]
     assert digest in statuses[-1]["description"]
     assert locks == ["lock", "unlock"]
 
@@ -489,6 +492,21 @@ def test_1495_rejects_unregistered_ssh_options(
     statuses, locks = transport(monkeypatch, remote_pr)
     with pytest.raises(ValueError, match="No registered certification host"):
         certify(remote_pr, remote="-oProxyCommand=anything")
+    assert not statuses and not locks
+
+
+@pytest.mark.parametrize("has_config", [False, True])
+def test_remote_macos_requires_a_registered_host(
+    remote_pr: dict[str, Any], monkeypatch: pytest.MonkeyPatch, has_config: bool
+) -> None:
+    config = Path("unconfigured-hosts.toml")
+    if has_config:
+        config.write_text("[certification]\nhosts = []\n")
+    statuses, locks = transport(monkeypatch, remote_pr)
+    with pytest.raises(ValueError, match="No registered certification host") as error:
+        certify(remote_pr, remote="macos-arm64", config=config)
+    assert str(config) in str(error.value)
+    assert "[[certification.hosts]]" in str(error.value)
     assert not statuses and not locks
 
 

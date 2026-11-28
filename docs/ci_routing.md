@@ -467,10 +467,10 @@ just certify --remote macos-arm64 --remote-config /path/to/config.toml --platfor
 `--remote` accepts a registered alias or a platform. For a platform it tries
 hosts in listed order and skips hosts that fail the SSH, checkout, disk or
 native-platform probe, or whose controller lock is busy. It does not retry a
-failed or interrupted test on another host. `randy-mini` remains the built-in
-macOS ARM64 fallback; `just certify --remote randy-mini` still works. If
-`--remote-config` is omitted, the controller reads `config.toml` in its
-working directory if present.
+failed or interrupted test on another host. Only hosts listed in the
+remote-hosts configuration file are eligible; there is no built-in fallback.
+If `--remote-config` is omitted, the controller reads `config.toml` in its
+working directory.
 
 The controller enforces the same clean, pushed, same-repository open-PR and
 writer checks as local certification. It holds a local `agent-coord` lock named

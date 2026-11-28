@@ -162,19 +162,19 @@ Which iteration is this? The footer of each mockups index names the branch
 copy”. The Pages build writes that into `shared/version.js` in the published
 copies only.
 
-## Hosted review server (randy-mini)
+## Hosted review server
 
-The shared review space is **not GitHub Pages**:
+Run the shared review space on a review host you control, reachable over a
+private network. It is separate from GitHub Pages. Replace `<review-host>`
+with the private DNS name or address used by reviewers:
 
-- Tailnet: <http://randy-mini.tail720e6b.ts.net:8765/>
-- Randy's LAN: <http://10.1.10.48:8765/>
-- All notes: <http://randy-mini.tail720e6b.ts.net:8765/notes.html>
-  (or `/notes.html` at the LAN address)
+- Main: `http://<review-host>:8765/`
+- All notes: `http://<review-host>:8765/notes.html`
 - Ideas: `/preview/`, with `mockups/<name>` at `/preview/<name>/`.
 
-Both addresses use **the same database**. Notes, replies and resolutions save
-immediately; refresh another browser or reopen its Notes panel's page to see
-changes. Hosted pages never store notes in browser localStorage, including
+All configured addresses for one server use the same database. Notes, replies
+and resolutions save immediately; refresh another browser or reopen its Notes
+panel to see changes. Hosted pages never store notes in browser localStorage, including
 during an API outage or an update restart. A marker injected into each HTML
 page and `version.js` selects server-only storage, independently of the hostname.
 If the API is unavailable, the page says “Review server unavailable, retrying;
@@ -232,11 +232,11 @@ For additional listening authorities use repeatable `--allow-host HOST:PORT`.
 ### Review a local branch without pushing to GitHub
 
 The direct-push repository is separate from the GitHub mirror. You need SSH
-access as **wgse** on randy-mini (over the tailnet or Randy's LAN); an HTTP
-connection alone cannot publish branches. In your working checkout, once:
+access as **wgse** on the review host; an HTTP connection alone cannot publish
+branches. In your working checkout, once:
 
 ```sh
-git remote add review ssh://wgse@randy-mini/Users/wgse/mockup-server/local.git
+git remote add review 'ssh://wgse@<review-host>/Users/wgse/mockup-server/local.git'
 ```
 
 Commit your in-progress mockup edits locally, then push the current branch:
@@ -245,7 +245,7 @@ Commit your in-progress mockup edits locally, then push the current branch:
 git push review HEAD:my-idea
 ```
 
-Open <http://randy-mini.tail720e6b.ts.net:8765/local/my-idea/>.
+Open `http://<review-host>:8765/local/my-idea/`.
 The page is labelled **“Local push, not on GitHub”**, with its commit.
 Branch names use the Pages publisher's slug rules. This push does not publish
 anything to GitHub and does not change `main`; GitHub previews still live under
@@ -302,10 +302,11 @@ per-page files with the CLI.
 
 ### Reproduce the unattended setup
 
-Everything except the launch agent plists lives in
-`/Users/wgse/mockup-server/`, as `wgse`; no sudo, GUI login, reboot or
-changes to `/Users/randy` are needed. Python 3.9+ and git must already exist.
-On randy-mini:
+On a macOS review host you control, these examples use a dedicated `wgse`
+account (UID 502) and `/Users/wgse/mockup-server/`. If your account has another
+UID, pass `--domain user/<uid>` to the installer and use that domain in
+`launchctl` commands. Python 3.9+ and git must already exist.
+Run as the review account, substituting the private hostname:
 
 ```sh
 mkdir -p /Users/wgse/mockup-server
@@ -314,8 +315,10 @@ git clone --bare https://github.com/WGSExtract/wgsextract-cli repo.git
 git clone --branch main https://github.com/WGSExtract/wgsextract-cli app
 /usr/bin/python3 app/gui/mockups/serve.py --db notes.db \
   --import-feedback app/gui/mockups/feedback
-/usr/bin/python3 app/gui/mockups/hosting/install.py
+/usr/bin/python3 app/gui/mockups/hosting/install.py --allow-host '<review-host>:8765'
 ```
+
+Repeat `--allow-host HOST:PORT` for each additional private address reviewers use.
 
 Before the implementation PR merges, clone branch `feat/776-mockup-server`
 instead of main. The update job fetches every five minutes and fast-forwards
@@ -351,20 +354,28 @@ For restore, boot out the server first, preserve the current DB and its
 Check with `launchctl print user/502/org.wgsextract.mockups` and
 `curl http://127.0.0.1:8765/api/health`.
 
-On lin-mid, install the watchdog as the current user:
+On a Linux machine that can reach the review host, install the watchdog as the
+current user. Substitute `@HOST@` with a noninteractive SSH destination and
+`@HEALTH_URL@` with the full private health URL:
 
 ```sh
 mkdir -p ~/.local/lib/mockup-server ~/.config/systemd/user
 install -m 755 gui/mockups/hosting/watchdog.sh ~/.local/lib/mockup-server/watchdog.sh
-cp gui/mockups/hosting/mockup-server-watchdog.{service,timer} ~/.config/systemd/user/
+sed -e 's|@HOST@|wgse@<review-host>|g' \
+    -e 's|@HEALTH_URL@|http://<review-host>:8765/api/health|g' \
+    gui/mockups/hosting/mockup-server-watchdog.service \
+    > ~/.config/systemd/user/mockup-server-watchdog.service
+cp gui/mockups/hosting/mockup-server-watchdog.timer ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable --now mockup-server-watchdog.timer
 systemctl --user start mockup-server-watchdog.service
 ```
 
-Requires existing noninteractive `ssh randy-mini`, curl, and agent-coord at
-`~/.local/bin/agent-coord` (systemd's default PATH omits that folder).
-Every five minutes it probes tailnet `/api/health`.
+The watchdog requires both `--host` and `--url`. Its SSH destination must
+use the installer's default root and launchd domain for automatic recovery.
+It also requires curl and agent-coord at `~/.local/bin/agent-coord`
+(systemd's default PATH omits that folder).
+Every five minutes it probes the configured `/api/health` URL.
 On failure it runs `hosting/recover.py`, which restores all three launchd
 registrations and kickstarts an existing server without forcing the nightly
 backup to run. It then checks health again and exits nonzero if the server
@@ -389,9 +400,10 @@ For a safe unreachable-host drill:
   --state-file ~/.local/state/mockup-server/watchdog-drill.state
 ```
 
-This reports failure for the bogus host without touching randy-mini.
-The timer needs lin-mid online; KeepAlive handles ordinary server crashes
-without it. Inspect `journalctl --user -u mockup-server-watchdog.service`.
+This reports failure without contacting the real review host.
+The timer needs the watchdog machine online; KeepAlive handles ordinary
+server crashes without it. Inspect the watchdog log with
+`journalctl --user -u mockup-server-watchdog.service`.
 
 ## Folder layout
 

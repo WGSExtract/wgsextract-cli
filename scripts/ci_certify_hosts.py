@@ -21,11 +21,8 @@ class RemoteHost:
         return self.platform == "windows-x64"
 
 
-DEFAULT_HOST = RemoteHost("randy-mini", "macos-arm64")
-
-
 def hosts_for(target: str, config: Path) -> list[RemoteHost]:
-    hosts: list[RemoteHost] = [DEFAULT_HOST]
+    hosts: list[RemoteHost] = []
     if config.exists():
         try:
             with config.open("rb") as stream:
@@ -39,7 +36,6 @@ def hosts_for(target: str, config: Path) -> list[RemoteHost]:
         if not isinstance(entries, list):
             raise ValueError(f"{config}: expected [[certification.hosts]] entries")
         aliases: set[str] = set()
-        hosts = []
         for entry in entries:
             if not isinstance(entry, dict) or set(entry) != {"alias", "platform"}:
                 raise ValueError(
@@ -58,9 +54,11 @@ def hosts_for(target: str, config: Path) -> list[RemoteHost]:
                 )
             hosts.append(RemoteHost(alias, platform))
             aliases.add(alias)
-        if "randy-mini" not in aliases:
-            hosts.append(DEFAULT_HOST)
     matches = [host for host in hosts if target in (host.alias, host.platform)]
     if not matches:
-        raise ValueError(f"No registered certification host for {target!r} in {config}")
+        raise ValueError(
+            f"No registered certification host for {target!r} in {config}. "
+            "Add a [[certification.hosts]] entry with an SSH alias and platform "
+            "or point --remote-config at a host registry."
+        )
     return matches
