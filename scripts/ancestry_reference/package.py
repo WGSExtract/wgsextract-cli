@@ -71,11 +71,13 @@ def _reference_bases(fasta: str, loci: list[tuple[str, int]]) -> list[str]:
     return [line.upper() for line in out.splitlines() if not line.startswith(">")]
 
 
-def _fasta_contig(fasta: str, chrom: int) -> str:
+def _fasta_contigs(fasta: str, chrom: NDArray[np.uint8]) -> dict[int, str]:
     names = {
         line.split("\t")[0] for line in Path(fasta + ".fai").read_text().splitlines()
     }
-    return f"chr{chrom}" if f"chr{chrom}" in names else str(chrom)
+    return {
+        int(c): f"chr{c}" if f"chr{c}" in names else str(c) for c in np.unique(chrom)
+    }
 
 
 def _lift(
@@ -101,8 +103,12 @@ def _lift(
         if target.isdigit() and 1 <= int(target) <= 22:
             out_chrom[i], out_pos[i] = int(target), hits[0][1] + 1
     lifted = np.flatnonzero(out_pos)
-    loci = [(_fasta_contig(fasta, int(out_chrom[i])), int(out_pos[i])) for i in lifted]
-    bases = _reference_bases(fasta, loci)
+    if not lifted.size:
+        return out_chrom, out_pos
+    contigs = _fasta_contigs(fasta, out_chrom[lifted])
+    bases = _reference_bases(
+        fasta, [(contigs[int(out_chrom[i])], int(out_pos[i])) for i in lifted]
+    )
     for index, base in zip(lifted, bases, strict=True):
         if base != ref[index]:
             out_chrom[index] = out_pos[index] = 0
@@ -186,8 +192,10 @@ def package(work: Path, ks: list[int], fastas: dict[str, str]) -> None:
     ref = [b[5] for b in bim]
     order = np.lexsort((pos, chrom))
     assert (order == np.arange(len(order))).all(), "sites must be in genome order"
+    grch38 = fastas["GRCh38"]
+    contigs = _fasta_contigs(grch38, chrom)
     bases = _reference_bases(
-        fastas["GRCh38"], [(f"chr{c}", int(p)) for c, p in zip(chrom, pos, strict=True)]
+        grch38, [(contigs[int(c)], int(p)) for c, p in zip(chrom, pos, strict=True)]
     )
     assert bases == ref, "GRCh38 reference alleles don't match hg38"
     arrays: dict[str, np.ndarray] = {
