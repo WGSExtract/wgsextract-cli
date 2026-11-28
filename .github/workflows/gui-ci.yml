@@ -10,6 +10,7 @@ on:
     paths:
       - "gui/**"
       - "scripts/gen_server_openapi.py"
+      - "scripts/installlab/gui/wgsextract-plan.json"
       - "src/wgsextract_cli/server/http_api.py"
       - "src/wgsextract_cli/server/transport*.py"
       - "src/wgsextract_cli/core/output_schema.py"

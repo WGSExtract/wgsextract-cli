@@ -94,22 +94,6 @@
       "minimumOptions": 1
     },
     {
-      "id": "ref_dropdown_microarray",
-      "kind": "dataSource",
-      "pageID": "microarray",
-      "sectionID": "microarray-inputs",
-      "controlID": "ref_fasta",
-      "inputs": {
-        "fieldValues": {
-          "ref_path": "{{usersWorkspace}}/reference"
-        }
-      },
-      "requiredOutput": [
-        "hs38 (Nebula) (GitHub)"
-      ],
-      "minimumOptions": 1
-    },
-    {
       "id": "ref_dropdown_settings",
       "kind": "dataSource",
       "pageID": "settings",

@@ -220,7 +220,8 @@ app_actions() {
     fi
     if is_tauri; then
         resources="$APP/Contents/Resources"
-        GUI_FOR_CLI_APP_SUPPORT_NAME="$BUNDLE_ID" "$resources/node/bin/node" \
+        WGSEXTRACT_GUI_APP_DATA_NAME="${APP_DATA##*/}" \
+            GUI_FOR_CLI_APP_SUPPORT_NAME="$BUNDLE_ID" "$resources/node/bin/node" \
             "$resources/app/dist/web/src/server/bundle-test-cli.js" \
             --plan "$HERE/gui-plan.json" --workspace "$WORKSPACE" ${USERS_ARGS:+"$USERS_ARGS" "$USERS_WORKSPACE"} \
             --report "$R/bundle-report.json" --log "$R/bundle-test.log" \
