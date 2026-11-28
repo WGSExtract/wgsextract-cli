@@ -10,10 +10,14 @@ import weakref
 from collections.abc import Sequence
 from typing import Any
 
+from wgsextract_cli.core._windows_job import WindowsJob
 from wgsextract_cli.core.download_progress import CancelEvent
 from wgsextract_cli.core.errors import WGSExtractError
 
 _owned_groups: weakref.WeakKeyDictionary[subprocess.Popen[Any], int] = (
+    weakref.WeakKeyDictionary()
+)
+_owned_jobs: weakref.WeakKeyDictionary[subprocess.Popen[Any], WindowsJob] = (
     weakref.WeakKeyDictionary()
 )
 
@@ -48,6 +52,21 @@ class ProcessRegistry:
         with self._lock:
             self.processes.setdefault(key, set()).add(process)
             self._scopes[process] = scope
+            if sys.platform == "win32":
+                # Popen closes the primary thread handle before returning. Assign
+                # immediately, but the launcher may have already spawned a child.
+                handle = getattr(process, "_handle", None)
+                if isinstance(handle, int) and process not in _owned_jobs:
+                    try:
+                        _owned_jobs[process] = WindowsJob(handle)
+                    except OSError:
+                        if process.returncode is None and process.poll() is None:
+                            logging.warning(
+                                "Could not assign process %s to a Windows job; "
+                                "falling back to taskkill.",
+                                process.pid,
+                                exc_info=True,
+                            )
             refusing = self._refusing_all or (
                 scope is not None and scope in self._refusing
             )
@@ -64,6 +83,8 @@ class ProcessRegistry:
             self._scopes.pop(process, None)
             if not processes:
                 del self.processes[key]
+        if sys.platform == "win32" and (job := _owned_jobs.get(process)):
+            job.close()
 
     def cancel(self, scope: object | None = None) -> None:
         """Terminate the registered processes of ``scope`` (every process when
@@ -159,16 +180,22 @@ def wait_for_pipeline(
 
 
 def _terminate_windows_trees(processes: list[subprocess.Popen[Any]]) -> None:
+    unowned = []
+    for proc in processes:
+        if job := _owned_jobs.get(proc):
+            job.close()
+        else:
+            unowned.append(proc)
+
     command = ["taskkill", "/F", "/T"]
-    pids = [str(proc.pid) for proc in processes if proc.poll() is None]
+    pids = [str(proc.pid) for proc in unowned if proc.poll() is None]
     if not pids:
         return
     for pid in pids:
         command.extend(("/PID", pid))
     label = ", ".join(pids)
     try:
-        # CTRL_BREAK can exit the launcher while Java descendants keep running,
-        # losing the root needed by /T. Batch PIDs for a single bounded launch.
+        # Only for unowned processes. Batch PIDs for a single bounded launch.
         result = subprocess.run(command, capture_output=True, timeout=10, check=False)
         if result.returncode:
             logging.warning(
@@ -178,6 +205,21 @@ def _terminate_windows_trees(processes: list[subprocess.Popen[Any]]) -> None:
             )
     except (OSError, subprocess.TimeoutExpired):
         logging.warning("Process %s could not be terminated.", label, exc_info=True)
+    for proc in unowned:
+        if proc.poll() is None:
+            try:
+                proc.kill()
+            except OSError:
+                logging.debug(
+                    "Process %s could not be killed.", proc.pid, exc_info=True
+                )
+
+
+def wait_for_job(process: subprocess.Popen[Any]) -> None:
+    """Keep an async Windows tool registered while its descendants still run."""
+    if sys.platform == "win32" and (job := _owned_jobs.get(process)):
+        while job.has_processes():
+            time.sleep(0.1)
 
 
 def terminate_trees(processes: list[subprocess.Popen[Any]]) -> None:
@@ -187,6 +229,7 @@ def terminate_trees(processes: list[subprocess.Popen[Any]]) -> None:
     groups: set[int] = set()
     if sys.platform == "win32":
         _terminate_windows_trees(processes)
+        return
     else:
         for proc in processes:
             owned_group = _owned_groups.get(proc)

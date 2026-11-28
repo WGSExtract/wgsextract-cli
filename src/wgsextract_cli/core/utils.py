@@ -47,6 +47,7 @@ from wgsextract_cli.core.process_registry import (
     process_group_kwargs,
     remember_process_group,
     terminate_trees,
+    wait_for_job,
     wait_for_pipeline,
 )
 from wgsextract_cli.core.process_registry import (
@@ -401,6 +402,7 @@ def run_command(
         _start_relays(relays, launched=False)
         raise ToolLaunchError(launch_error_message(cmd_list[0], error)) from error
 
+    proc_registry.register_process(cmd_str, process)
     relay_threads = _start_relays(relays, launched=True)
     if stderr_read is not None:
         assert stderr_write is not None
@@ -411,7 +413,6 @@ def run_command(
             daemon=True,
         )
         stderr_thread.start()
-    proc_registry.register_process(cmd_str, process)
     try:
         if sys.platform == "win32":
             # Infinite Windows waits defer Python's main-thread signal handlers.
@@ -557,12 +558,13 @@ def popen(
         _start_relays(relays, launched=False)
         raise ToolLaunchError(launch_error_message(cmd_list[0], error)) from error
     remember_process_group(process)
+    proc_registry.register_process(cmd_str, process)
     if isinstance(process, _RelayedPopen):
         process.relays = _start_relays(relays, launched=True)
-    proc_registry.register_process(cmd_str, process)
 
     def _unregister_finished_process() -> None:
         process.wait()
+        wait_for_job(process)
         proc_registry.unregister_process(cmd_str, process)
 
     execution_context.context_thread(
