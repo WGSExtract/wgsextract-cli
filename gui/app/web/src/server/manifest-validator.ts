@@ -133,13 +133,16 @@ function validateSetupSteps(steps: SetupStep[] | undefined, scope: string): void
         if (step.workingDirectory != null) {
             validateRelativePath(step.workingDirectory, `${base}.workingDirectory`);
         }
-        for (const key of ["toolName", "toolVersion"] as const) {
+        for (const key of ["toolName", "toolVersion", "installedVersionFile", "legacyPixiVersionFile"] as const) {
             if (step[key] != null) {
                 requireNonEmpty(step[key], `${base}.${key}`);
             }
         }
         if (step.toolVersionFile != null) {
             validateRelativePath(step.toolVersionFile, `${base}.toolVersionFile`);
+        }
+        if (step.installedVersionFile && !step.toolVersion && !step.toolVersionFile) {
+            throw new BundleValidationError(`Invalid ${base}.installedVersionFile: requires an expected tool version.`);
         }
         if (step.requiresAdmin != null && typeof step.requiresAdmin !== "boolean") {
             throw new BundleValidationError(`Invalid ${indexedBase}.requiresAdmin: expected a boolean.`);

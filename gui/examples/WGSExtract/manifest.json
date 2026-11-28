@@ -41,6 +41,8 @@
         ],
         "toolName": "WGS Extract CLI",
         "toolVersionFile": "scripts/wgsextract-release-tag.txt",
+        "installedVersionFile": "{{appData}}/runtime/wgsextract-cli/app/.wgsextract-release-tag",
+        "legacyPixiVersionFile": "{{appData}}/runtime/wgsextract-cli/app/pixi.toml",
         "environment": {
           "WGSEXTRACT_INSTALL_DIR": "{{appData}}/runtime/wgsextract-cli"
         }
@@ -58,6 +60,8 @@
         ],
         "toolName": "WGS Extract CLI",
         "toolVersionFile": "scripts/wgsextract-release-tag.txt",
+        "installedVersionFile": "{{appData}}/runtime/wgsextract-cli/app/.wgsextract-release-tag",
+        "legacyPixiVersionFile": "{{appData}}/runtime/wgsextract-cli/app/pixi.toml",
         "environment": {
           "WGSEXTRACT_INSTALL_DIR": "{{appData}}/runtime/wgsextract-cli"
         }

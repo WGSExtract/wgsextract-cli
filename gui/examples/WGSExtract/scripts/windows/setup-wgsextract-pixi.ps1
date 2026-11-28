@@ -31,6 +31,7 @@ $appDir = Join-Path $installDir "app"
 $binDir = Join-Path $installDir "bin"
 
 . (Join-Path $scriptDir "wgsextract-msys2.ps1")
+. (Join-Path $scriptDir "setup-transaction.ps1")
 $msys2Root = Get-WGSExtractMsys2Root
 
 function Test-MsysInstall {
@@ -63,21 +64,23 @@ function Write-Utf8File {
     [System.IO.File]::WriteAllText($LiteralPath, $Value, $utf8NoBom)
 }
 
-function Remove-DirectoryWithRetry {
-    param(
-        [Parameter(Mandatory = $true)][string]$Path,
-        [int]$Attempts = 8
-    )
+function Get-SourceReleaseTag {
+    param([string]$AppDir)
 
-    if (-not (Test-Path -LiteralPath $Path)) { return }
-    for ($i = 1; $i -le $Attempts; $i += 1) {
-        try {
-            Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
-            return
-        }
-        catch {
-            if ($i -eq $Attempts) { throw }
-            Start-Sleep -Milliseconds (500 * $i)
+    $tagFile = Join-Path $AppDir ".wgsextract-release-tag"
+    if (Test-Path -LiteralPath $tagFile -PathType Leaf) {
+        return ([string](Get-Content -LiteralPath $tagFile -Raw)).Trim()
+    }
+
+    # Released versions through 0.8.10 did not record the tag in the source tree.
+    $manifest = Join-Path $AppDir "pixi.toml"
+    if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) { return }
+    $workspace = $false
+    foreach ($line in Get-Content -LiteralPath $manifest) {
+        if ($line -match '^\s*\[') {
+            $workspace = $line -match '^\s*\[(workspace|project)\]\s*(?:#.*)?$'
+        } elseif ($workspace -and $line -match '^\s*version\s*=\s*["'']([^"'']+)["'']\s*(?:#.*)?$') {
+            return "v$($Matches[1])"
         }
     }
 }
@@ -85,31 +88,27 @@ function Remove-DirectoryWithRetry {
 function Restore-AppSource {
     param(
         [Parameter(Mandatory = $true)][string]$Archive,
-        [Parameter(Mandatory = $true)][string]$AppDir
+        [Parameter(Mandatory = $true)][string]$AppDir,
+        [Parameter(Mandatory = $true)][string]$ReleaseTag,
+        [Parameter(Mandatory = $true)][string]$Journal,
+        [Parameter(Mandatory = $true)][hashtable]$Transaction
     )
 
-    # A complete extract has both install_windows.bat and pixi.toml at the
-    # root. If only install_windows.bat is present, a previous run was
-    # interrupted mid-extract — re-extract instead of trusting the partial
-    # state. We also clean up any stale .new sibling and any leftover
-    # app.new subdirectory left under a previous partial extract.
-    $alreadyExtracted = (Test-Path -LiteralPath (Join-Path $AppDir "install_windows.bat") -PathType Leaf) -and
-                        (Test-Path -LiteralPath (Join-Path $AppDir "pixi.toml") -PathType Leaf)
-    if ($alreadyExtracted) {
-        $staleNew = Join-Path $AppDir "app.new"
-        Remove-DirectoryWithRetry -Path $staleNew
-        return
+    if ($ReleaseTag -cne "custom" -and
+        (Test-Path -LiteralPath (Join-Path $AppDir "install_windows.bat") -PathType Leaf) -and
+        (Test-Path -LiteralPath (Join-Path $AppDir "pixi.toml") -PathType Leaf) -and
+        (Get-SourceReleaseTag -AppDir $AppDir) -ceq $ReleaseTag) {
+        return $false
     }
 
-    $newAppDir = "$AppDir.new"
-    Remove-DirectoryWithRetry -Path $newAppDir
     # The .zip, as the CLI's own Windows installer uses: the release has
     # symlinks, which tar.exe can't create without Developer Mode ("Invalid
-    # argument") and ZIP extraction writes as small files. Stage in a short
-    # path. Use the .NET Framework's two-argument API: an inherited PSModulePath
+    # argument") and ZIP extraction writes as small files. Stage beside app so
+    # publishing is a rename. Use the .NET Framework's two-argument API: an inherited PSModulePath
     # can load PowerShell 7's Archive module into Windows PowerShell 5.1, where
     # its three-argument ExtractToDirectory overload doesn't exist.
-    $staging = Join-Path ([System.IO.Path]::GetTempPath()) ("wgsextract-" + [guid]::NewGuid().ToString("N"))
+    $staging = $Transaction.Staging
+    $previousAppDir = Join-Path $Transaction.WorkDir "previous-app"
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     try {
         [System.IO.Compression.ZipFile]::ExtractToDirectory($Archive, $staging)
@@ -117,33 +116,19 @@ function Restore-AppSource {
         if ($top.Count -ne 1) {
             throw "Downloaded archive did not contain a single source directory."
         }
-        Move-Item -LiteralPath $top[0].FullName -Destination $newAppDir
+        foreach ($required in @("install_windows.bat", "pixi.toml")) {
+            if (-not (Test-Path -LiteralPath (Join-Path $top[0].FullName $required) -PathType Leaf)) {
+                throw "Downloaded archive did not contain $required."
+            }
+        }
+        Save-AppSetupTransaction $Journal $Transaction
+        if ($Transaction.HadApp) { Move-AppDirectory $AppDir $previousAppDir }
+        Move-AppDirectory $top[0].FullName $AppDir
+        return $true
     }
     finally {
-        Remove-DirectoryWithRetry -Path $staging
-    }
-    if (-not (Test-Path -LiteralPath (Join-Path $newAppDir "install_windows.bat") -PathType Leaf)) {
-        Write-Error "Downloaded archive did not contain install_windows.bat."
-        exit 1
-    }
-    if (-not (Test-Path -LiteralPath (Join-Path $newAppDir "pixi.toml") -PathType Leaf)) {
-        Write-Error "Downloaded archive did not contain pixi.toml."
-        exit 1
-    }
-    if (Test-Path -LiteralPath $AppDir) { Remove-DirectoryWithRetry -Path $AppDir }
-
-    # Antivirus (Defender) sometimes briefly holds files inside the
-    # freshly-extracted directory. Retry Move-Item a few times before giving up.
-    $attempts = 6
-    for ($i = 1; $i -le $attempts; $i += 1) {
-        try {
-            Move-Item -LiteralPath $newAppDir -Destination $AppDir -ErrorAction Stop
-            return
-        }
-        catch {
-            if ($i -eq $attempts) { throw }
-            Start-Sleep -Milliseconds (500 * $i)
-        }
+        try { Remove-DirectoryWithRetry -Path $staging }
+        catch { Write-Warning "Could not remove source staging directory ${staging}: $_" }
     }
 }
 
@@ -154,11 +139,10 @@ $pixiPreInstalled = ($null -ne (Find-Pixi))
 # anything may be shared with other files, so it is never the app's to remove.
 $pixiHomeBefore = if ($env:PIXI_HOME) { $env:PIXI_HOME } else { Join-Path $HOME ".pixi" }
 $pixiHomeExisted = (Test-Path -LiteralPath $pixiHomeBefore) -and ($null -ne (Get-ChildItem -LiteralPath $pixiHomeBefore -Force -ErrorAction SilentlyContinue | Select-Object -First 1))
-# The app's own folder for MSYS2 when %LOCALAPPDATA% can't hold it (see wgsextract-msys2.ps1).
-$userFolder = Get-WGSExtractUserFolder
-$msys2InUserFolder = $msys2Root.StartsWith("$userFolder\", [System.StringComparison]::OrdinalIgnoreCase)
 
+$ref = $requestedRef
 if ($env:WGSEXTRACT_ARCHIVE_URL) {
+    if (-not ($env:WGSEXTRACT_REF -or $env:WGSEXTRACT_RELEASE_TAG)) { $ref = "custom" }
     $archiveUrls = @($env:WGSEXTRACT_ARCHIVE_URL)
 } else {
     if ($requestedRef -eq "latest" -or -not $requestedRef) {
@@ -184,18 +168,34 @@ if ($env:WGSEXTRACT_ARCHIVE_URL) {
 }
 
 New-Item -ItemType Directory -Force -Path $installDir, (Join-Path $installDir "tmp"), $binDir | Out-Null
+$journal = Join-Path $installDir ".setup-transaction.json"
+$lock = Open-AppSetupLock $installDir
 $workDir = Join-Path (Join-Path $installDir "tmp") ("install." + [guid]::NewGuid().ToString("N"))
-New-Item -ItemType Directory -Force -Path $workDir | Out-Null
 $archive = Join-Path $workDir "wgsextract-cli.zip"
+$previousAppDir = Join-Path $workDir "previous-app"
+$canClean = $false
 
 try {
+    Complete-AppSetupTransaction $journal $appDir
+    $canClean = $true
+    New-Item -ItemType Directory -Force -Path $workDir | Out-Null
+    $transaction = @{
+        WorkDir = $workDir
+        Staging = "$appDir." + [guid]::NewGuid().ToString("N").Substring(0, 8)
+        HadApp = Test-Path -LiteralPath $appDir
+        Environments = @()
+    }
     $downloadAttempts = 5
     $downloaded = $false
     foreach ($currentUrl in $archiveUrls) {
         Write-Host "Downloading WGS Extract CLI from $currentUrl"
         for ($attempt = 1; $attempt -le $downloadAttempts; $attempt += 1) {
             try {
-                Invoke-WebRequest -UseBasicParsing -Uri $currentUrl -OutFile $archive -TimeoutSec 120
+                if ([IO.File]::Exists($currentUrl)) {
+                    Copy-Item -LiteralPath $currentUrl -Destination $archive
+                } else {
+                    Invoke-WebRequest -UseBasicParsing -Uri $currentUrl -OutFile $archive -TimeoutSec 120
+                }
                 $downloaded = $true
                 break
             }
@@ -215,7 +215,11 @@ try {
     if (-not $downloaded) {
         throw "Failed to download WGS Extract CLI from any of: $($archiveUrls -join ', ')"
     }
-    Restore-AppSource -Archive $archive -AppDir $appDir
+    $sourceReplaced = Restore-AppSource -Archive $archive -AppDir $appDir -ReleaseTag $ref -Journal $journal -Transaction $transaction
+    $installedRef = if ($ref -ceq "custom") {
+        $sourceTag = Get-SourceReleaseTag -AppDir $appDir
+        if ($sourceTag) { $sourceTag } else { $ref }
+    } else { $ref }
 
     $installBat = Join-Path $appDir "install_windows.bat"
     if (-not (Test-Path -LiteralPath $installBat -PathType Leaf)) {
@@ -232,11 +236,29 @@ try {
     New-Item -ItemType Directory -Force -Path $pixiCacheDirNew, $pixiEnvsDirNew | Out-Null
     $env:PIXI_CACHE_DIR = $pixiCacheDirNew
     $env:PIXI_PROJECT_ENVIRONMENT_DIR = $pixiEnvsDirNew
+    if ($sourceReplaced -and (Test-Path -LiteralPath $previousAppDir)) {
+        $previousProjects = @(Get-AppPixiProjects $pixiEnvsDirNew $appDir)
+        if ($previousProjects.Count) {
+            # Install at the final path: Pixi environments contain absolute prefixes.
+            $transaction.EnvironmentBackupDir = Join-Path $pixiEnvsDirNew ("old-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
+            $transaction.Environments = @(foreach ($project in $previousProjects) {
+                @{ Path = $project.FullName; Backup = (Join-Path $transaction.EnvironmentBackupDir $project.Name) }
+            })
+            Save-AppSetupTransaction $journal $transaction
+            New-Item -ItemType Directory -Path $transaction.EnvironmentBackupDir | Out-Null
+            foreach ($project in $transaction.Environments) {
+                Move-AppDirectory $project.Path $project.Backup
+            }
+        }
+    }
 
     # CLI releases before native Windows tools (0.6.x and older) install MSYS2
     # and its pacman tools; newer ones take every tool from Pixi and need none.
     $usesMsys2 = Test-Path -LiteralPath (Join-Path $appDir "scripts\setup_pacman_runtime.ps1") -PathType Leaf
     if ($usesMsys2) {
+        # The app's own folder for MSYS2 when %LOCALAPPDATA% can't hold it.
+        $userFolder = Get-WGSExtractUserFolder
+        $msys2InUserFolder = $msys2Root.StartsWith("$userFolder\", [StringComparison]::OrdinalIgnoreCase)
         if ($msys2InUserFolder) {
             New-WGSExtractUserFolder | Out-Null
         }
@@ -244,8 +266,6 @@ try {
     } else {
         $msys2InUserFolder = $false
     }
-    $batArgs = @()
-
     # install_windows.bat saves its runtime defaults in the user's own CLI config
     # (platformdirs' user_config_dir("wgsextract", "theontho")). The app's commands
     # use the bundle's config and find MSYS2 through MSYS2_ROOT, so that file is put
@@ -256,6 +276,11 @@ try {
     Write-Host "Delegating to upstream install_windows.bat (installs Pixi as needed and the CLI's tools)..."
     Push-Location $appDir
     try {
+        if ($sourceReplaced) {
+            $transaction.InstallerStarted = $true
+            $transaction.EnvsDir = $pixiEnvsDirNew
+            Save-AppSetupTransaction $journal $transaction
+        }
         & $env:ComSpec /d /c "call `"$installBat`""
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     } finally {
@@ -342,7 +367,7 @@ try {
     $previousManifests = @($manifestPath)
     if ($movesLegacyRuntime) { $previousManifests += Join-Path $legacyRuntime "install-manifest.json" }
     foreach ($previousManifest in $previousManifests | Where-Object { Test-Path -LiteralPath $_ }) {
-        $previous = @((Get-Content -LiteralPath $previousManifest -Raw | ConvertFrom-Json).items)
+        $previous = @((Get-Content -LiteralPath $previousManifest -Raw -Encoding UTF8 | ConvertFrom-Json).items)
         foreach ($item in $previous) {
             $key = "$($item.type)|$($item.path)|$($item.root)"
             if (-not ($manifestItems | Where-Object { "$($_.type)|$($_.path)|$($_.root)" -eq $key })) {
@@ -359,10 +384,27 @@ try {
     $manifest = @{
         format = 1
         createdAt = (Get-Date).ToUniversalTime().ToString("o")
-        wgsextractRef = $requestedRef
+        wgsextractRef = $installedRef
         items = @(foreach ($type in $order) { $manifestItems | Where-Object { $_.type -eq $type } })
     }
-    Set-Content -LiteralPath $manifestPath -Encoding UTF8 -Value ($manifest | ConvertTo-Json -Depth 5)
+    $stagedManifest = Join-Path $workDir "install-manifest.json"
+    Set-Content -LiteralPath $stagedManifest -Encoding UTF8 -Value ($manifest | ConvertTo-Json -Depth 5)
+    $hadManifest = [IO.File]::Exists($manifestPath)
+    if ($sourceReplaced) {
+        $transaction.PublishingManifest = $true
+        $transaction.HadManifest = $hadManifest
+        Save-AppSetupTransaction $journal $transaction
+    }
+    if ($hadManifest) {
+        [IO.File]::Replace($stagedManifest, $manifestPath, (Join-Path $workDir "previous-manifest.json"))
+    } else {
+        [IO.File]::Move($stagedManifest, $manifestPath)
+    }
+    Write-Utf8File -LiteralPath (Join-Path $appDir ".wgsextract-release-tag") -Value "$installedRef`n"
+    if ($sourceReplaced) {
+        $transaction.Committed = $true
+        Save-AppSetupTransaction $journal $transaction
+    }
 
     # The runtime an earlier version installed in the workspace is unused now; what it recorded is in the
     # new manifest. Its Pixi environments were never in it (they are in $pixiBaseDir).
@@ -370,15 +412,9 @@ try {
         Write-Host "Removing the runtime an earlier version installed in the workspace: $legacyRuntime"
         # Its Pixi environment is in $pixiEnvsDirNew, recorded as installed for its pixi.toml; this
         # runtime's has a new one there.
-        $legacyPixiManifest = [System.IO.Path]::GetFullPath((Join-Path $legacyRuntime "app\pixi.toml"))
-        foreach ($project in Get-ChildItem -LiteralPath $pixiEnvsDirNew -Directory -Force -ErrorAction SilentlyContinue) {
-            $record = Join-Path $project.FullName "envs\default\conda-meta\pixi"
-            if (-not (Test-Path -LiteralPath $record -PathType Leaf)) { continue }
+        foreach ($project in Get-AppPixiProjects $pixiEnvsDirNew (Join-Path $legacyRuntime "app")) {
             try {
-                $installedFor = (Get-Content -LiteralPath $record -Raw -Encoding UTF8 -ErrorAction Stop | ConvertFrom-Json).manifest_path
-                if ($installedFor -and [string]::Equals([System.IO.Path]::GetFullPath($installedFor), $legacyPixiManifest, [System.StringComparison]::OrdinalIgnoreCase)) {
-                    Remove-Item -LiteralPath $project.FullName -Recurse -Force -ErrorAction Stop
-                }
+                Remove-Item -LiteralPath $project.FullName -Recurse -Force -ErrorAction Stop
             } catch {
                 Write-Warning "Could not check or remove the Pixi environment in $($project.FullName): $($_.Exception.Message)"
             }
@@ -397,11 +433,14 @@ try {
     Write-Host "WGS Extract CLI is installed in $installDir"
     exit 0
 } finally {
-    if (Test-Path -LiteralPath $workDir) {
-        try {
-            Remove-Item -LiteralPath $workDir -Recurse -Force -ErrorAction Stop
-        } catch {
-            Write-Warning "Failed to remove temporary setup directory ${workDir}: $($_.Exception.Message)"
+    try {
+        if ($canClean) {
+            Complete-AppSetupTransaction $journal $appDir
+            Remove-DirectoryWithRetry $workDir
         }
+    } catch {
+        Write-Warning "Could not finish Setup cleanup; recovery state is at ${journal}: $_"
+    } finally {
+        $lock.Dispose()
     }
 }

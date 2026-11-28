@@ -12,6 +12,15 @@ $bundleRoot = Split-Path -Parent $scriptsRoot
 # folder (where apps up to 0.8.6 installed it).
 $runtimeRoot = if ($env:WGSEXTRACT_GUI_APP_DATA) { $env:WGSEXTRACT_GUI_APP_DATA } else { $bundleRoot }
 $appDir = if ($env:WGSEXTRACT_APP_DIR) { $env:WGSEXTRACT_APP_DIR } else { Join-Path $runtimeRoot "runtime\wgsextract-cli\app" }
+$installDir = Split-Path -Parent $appDir
+$journal = Join-Path $installDir ".setup-transaction.json"
+if (Test-Path -LiteralPath $journal) {
+    # Windows cancels Setup by killing PowerShell, so its finally block may not run.
+    . (Join-Path $scriptDir "setup-transaction.ps1")
+    $lock = Open-AppSetupLock $installDir
+    try { Complete-AppSetupTransaction $journal $appDir }
+    finally { $lock.Dispose() }
+}
 # The CLI finds the MSYS2 tools setup installed through MSYS2_ROOT (its own
 # default is C:\msys64, and the bundle's config.toml doesn't record one).
 . (Join-Path $scriptDir "wgsextract-msys2.ps1")

@@ -224,6 +224,10 @@ export interface SetupStep {
     optional?: boolean;
     requiresAdmin?: boolean;
     platforms?: string[];
+    toolVersion?: string;
+    toolVersionFile?: string;
+    installedVersionFile?: string;
+    legacyPixiVersionFile?: string;
     [key: string]: unknown;
 }
 

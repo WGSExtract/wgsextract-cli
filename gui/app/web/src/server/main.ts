@@ -13,7 +13,7 @@ import { takeNativePickerEndpoint } from "./path-picker.js";
 import { createProcessManager } from "./process-runner.js";
 import { takeApiToken } from "./request-guard.js";
 import { createRequestHandler } from "./routes.js";
-import { forgetSetupWithMissingTools } from "./setup-runner.js";
+import { forgetSetupWithStaleTools } from "./setup-runner.js";
 import { loadBundleState } from "./bundle-state.js";
 import { migrateNetworkSettingsAfterCompletedSetup, readEffectiveNetworkMode } from "./network-settings.js";
 import { withCliNetworkPolicy } from "./cli-network-policy.js";
@@ -167,7 +167,7 @@ async function loadBundleRuntime(requestedSource: string, preload: boolean) {
         const status = (await loadBundleState(resolvedBundleRoot)).setupRun?.status;
         if (status === "ok" || status === "warning") await migrateNetworkSettingsAfterCompletedSetup();
     }
-    await forgetSetupWithMissingTools(manifest, resolvedBundleRoot);
+    await forgetSetupWithStaleTools(manifest, resolvedBundleRoot);
     const runtime = {
         sourceBundleRoot: resolvedSourceBundleRoot,
         bundleRoot: resolvedBundleRoot,
