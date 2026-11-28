@@ -219,6 +219,7 @@ def test_1624_refuses_other_or_unidentified_builds(
         ("##assembly=38\n##contig=<ID=1>\n", False),
         ('##contig=<ID=1,assembly="38">\n', False),
         ("##reference=GRCh38.fa\n##contig=<ID=1,assembly=37>\n", True),
+        ("##contig=<ID=1,assembly=hs38d1project/GRCh37.fa>\n", True),
     ],
 )
 def test_1682_numeric_assembly_declarations_are_build_evidence(

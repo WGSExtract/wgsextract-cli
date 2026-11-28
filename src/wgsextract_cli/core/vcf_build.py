@@ -21,7 +21,7 @@ def primary_grch38_aliases() -> dict[str, Chromosome]:
 
 def _assembly_build(value: str) -> str | None:
     value = value.strip().strip('"')
-    return canonical_build(value) or build_from_path(value)
+    return canonical_build(value, exact=True) or build_from_path(value)
 
 
 def require_grch38(vcf: str, annotation: str) -> None:
