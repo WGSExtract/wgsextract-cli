@@ -13,7 +13,8 @@ the final variants from a chain, include `gtex` by name, for example
 GTEx is not in the default chain. The chain's `chain_gtex_eqtl.tsv` reflects
 any region selection and other annotation steps. A successful rerun without
 `gtex` removes that chain's old sidecar. The chain does not add GTEx INFO fields
-to its VCF or GTEx columns to `--to-table` output.
+to its VCF or GTEx columns to `--to-table` output. The step journal tracks the
+VCF and sidecar together; use `--force-step gtex` to regenerate the pair.
 
 The VCF header must identify GRCh38 through a build declaration, known
 primary-contig lengths or versioned accessions. Conflicting build evidence

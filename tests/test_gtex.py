@@ -214,6 +214,17 @@ def test_1662_exact_alt_retains_tissue_gene_set_and_effect(
         item.id == "gtex" and item.release_basis == "pinned_sha256"
         for item in result.resources
     )
+    if mode == "chain":
+        journal = json.loads((output / "chain_annotate.steps.json").read_text())
+        assert journal["steps"]["gtex"]["status"] == "complete"
+        assert [(step["step"], step["action"]) for step in result.details["steps"]] == [
+            ("gtex", "run")
+        ]
+        rerun = api.vcf.chain_annotate(
+            api.VcfChainAnnotateParams(**common, annotations="gtex")
+        )
+        assert rerun.details["steps"][0]["action"] == "skip"
+        assert rerun.metrics["gtex_associations"] == len(expected)
     if mode == "scoped-screen-chain":
         api.vcf.gtex(api.VcfGtexParams(**common))
         api.vcf.chain_annotate(

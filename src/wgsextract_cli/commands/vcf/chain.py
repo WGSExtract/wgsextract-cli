@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import sys
 from collections import Counter
+from collections.abc import Callable, Mapping
 from dataclasses import asdict
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -46,7 +47,7 @@ from .basic import record_variants, require_vcf_input, vcf_input_handler
 from .chain_scope import ChainScope, resolve_scope, select_records, vcf_indexes
 from .clinvar_revel import CLINVAR_ANNOTATED, REVEL_ANNOTATED
 from .deleteriousness import CADD_ANNOTATED, GERP_ANNOTATED
-from .gtex import GTEX_TSV, protect_output, write_sidecar
+from .gtex import GTEX_TSV, protect_output, record_sidecar_source, write_sidecar
 from .population import GNOMAD_ANNOTATED, PHYLOP_ANNOTATED
 from .regulatory import REGULATORY_ANNOTATED
 from .splicing import ALPHAMISSENSE_ANNOTATED, PHARMGKB_ANNOTATED, SPLICEAI_ANNOTATED
@@ -504,8 +505,14 @@ def _run_steps(
 
 
 def _publish_chain(
-    source: str, input_file: str, final: Path, table: Path | None, sidecar: Path
-) -> None:
+    source: str,
+    input_file: str,
+    final: Path,
+    table: Path | None,
+    sidecar: Path,
+    *,
+    checkpoint: Callable[[], None] | None = None,
+) -> dict[str, int]:
     with TemporaryDirectory(prefix=".chain-publish-", dir=final.parent) as stage:
         vcf, tsv = Path(stage, final.name), Path(stage, sidecar.name)
         if source == input_file:
@@ -518,8 +525,9 @@ def _publish_chain(
                 if Path(source + ext).exists():
                     shutil.copy2(source + ext, str(vcf) + ext)
         files = {}
+        metrics = {}
         if table is not None:
-            write_sidecar(str(vcf), table, tsv)
+            metrics = write_sidecar(str(vcf), table, tsv)
             files[tsv] = sidecar
         indexes = {
             Path(str(vcf) + ext): Path(str(final) + ext) for ext in (".tbi", ".csi")
@@ -529,9 +537,84 @@ def _publish_chain(
         publish_output_set(
             files,
             retire=[*indexes.values(), sidecar],
+            checkpoint=checkpoint,
         )
-    if table is not None:
-        current_result().add_output(sidecar, "gtex_eqtl_associations")
+    return metrics
+
+
+def _input_generations(
+    inputs: Mapping[str, str | Path],
+) -> dict[str, tuple[int, int, int, int, int] | None]:
+    result: dict[str, tuple[int, int, int, int, int] | None] = {}
+    for role, path in inputs.items():
+        try:
+            info = Path(path).stat()
+        except FileNotFoundError:
+            result[role] = None  # The source of a dry-run step may not exist yet.
+        else:
+            result[role] = (
+                info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns
+            )  # fmt: skip
+    return result
+
+
+def _publish_gtex(
+    journal: StepJournal,
+    source: str,
+    input_file: str,
+    final: Path,
+    table: Path,
+    sidecar: Path,
+) -> None:
+    source_indexes = vcf_indexes(source) if source != input_file else ()
+    inputs: dict[str, str | Path] = {
+        "vcf": source,
+        "track": table,
+        **{f"index:{p.name}": p for p in source_indexes},
+    }
+    generations = _input_generations(inputs)
+
+    def unchanged() -> None:
+        if _input_generations(inputs) != generations:
+            raise WGSExtractError(
+                "A GTEx chain input changed during annotation. Rerun the chain."
+            )
+
+    decision = journal.decide(
+        Step(
+            "gtex",
+            inputs=inputs,
+            # Journal completion re-reads paths; key reuse to the generation we used.
+            params={"input_generations": generations},
+            outputs=[final, sidecar],
+            tools=["bcftools", "tabix"],
+        )
+    )
+    if journal.dry_run:
+        return
+    if decision.run:
+        # A failed attempt must not remove the last successfully published pair.
+        with journal.running(decision, keep_partial=True) as handle:
+            handle.metrics.update(
+                _publish_chain(
+                    source, input_file, final, table, sidecar, checkpoint=unchanged
+                )
+            )
+            for path in vcf_indexes(str(final)):
+                handle.add_output(path)
+    else:
+        with gtex_data.open_track(table, verify=True) as (_, provenance):
+            unchanged()
+            record_sidecar_source(
+                table,
+                provenance,
+                {
+                    key: value
+                    for key, value in decision.metrics.items()
+                    if key.startswith("gtex_") and isinstance(value, int)
+                },
+            )
+    current_result().add_output(sidecar, "gtex_eqtl_associations")
 
 
 def run_chain_annotate(
@@ -603,24 +686,20 @@ def run_chain_annotate(
                 scope,
                 gtex_table,
             )
-            if journal.dry_run:
-                # The chain always publishes and optionally exports after the
-                # resumable annotation steps, even when it reused every step.
+            if gtex_table is not None:
+                _publish_gtex(
+                    journal, source, input_file, final_out, gtex_table, sidecar
+                )
+            elif journal.dry_run:
                 journal.decide(
                     Step("publish", inputs={"vcf": source}, outputs=[final_out])
                 )
-                if gtex_table is not None:
-                    journal.decide(
-                        Step(
-                            "gtex",
-                            inputs={"vcf": final_out, "track": gtex_table},
-                            outputs=[sidecar],
-                        )
-                    )
+            else:
+                _publish_chain(source, input_file, final_out, None, sidecar)
+            if journal.dry_run:
                 if params.to_table:
                     journal.decide(Step("table", inputs={"vcf": final_out}))
                 return
-            _publish_chain(source, input_file, final_out, gtex_table, sidecar)
             logging.info(f"Chain annotation complete: {final_out}")
             count = vcf_record_count(final_out)
             record_variants(str(final_out), "annotated_vcf", count)

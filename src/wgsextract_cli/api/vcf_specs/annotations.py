@@ -483,7 +483,7 @@ class VcfChainAnnotateParams(_VcfFileParams):
     force_steps: tuple[str, ...] | None = force_steps_param(
         (
             "select", "clinvar", "revel", "phylop", "cadd", "gerp", "gnomad",
-            "spliceai", "alphamissense", "pharmgkb", "regulatory", "vep", "trim",
+            "spliceai", "alphamissense", "pharmgkb", "regulatory", "vep", "trim", "gtex",
         ),
         aliases=("--force-steps",),
     )  # fmt: skip

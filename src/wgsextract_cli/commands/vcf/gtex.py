@@ -22,14 +22,21 @@ def protect_output(output: Path, *inputs: str | Path | None) -> None:
         )
 
 
-def write_sidecar(input_file: str, table: Path, staged: Path) -> None:
-    with gtex_data.open_track(table, verify=True) as (db, source):
-        metrics = gtex_matches.write_matches(input_file, staged, db)
+def record_sidecar_source(
+    table: Path, source: dict[str, str], metrics: dict[str, int]
+) -> None:
     result = current_result()
     result.set_details({"gtex_source": source})
     result.add_metrics(**metrics)
     result.add_input(table, "gtex_track")
     resource_releases.record_pinned("gtex", gtex_data.BUILD, table)
+
+
+def write_sidecar(input_file: str, table: Path, staged: Path) -> dict[str, int]:
+    with gtex_data.open_track(table, verify=True) as (db, source):
+        metrics = gtex_matches.write_matches(input_file, staged, db)
+    record_sidecar_source(table, source, metrics)
+    return metrics
 
 
 def run_gtex(params: VcfGtexParams) -> None:
