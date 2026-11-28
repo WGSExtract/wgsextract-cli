@@ -1,19 +1,40 @@
 import assert from "node:assert/strict";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { parseJsonWithComments } from "../dist/shared/json-comments.js";
 import { conditionMatches, disabledReason, displayCommand, hydrateRows, isActionVisible, isSectionVisible, missingPlaceholders } from "../dist/shared/rendering.js";
 import { readsLastResultDocument } from "../dist/shared/last-result-documents.js";
 import { commandContextFromState } from "../dist/shared/rendering-context.js";
 import { currentSetupPlatform } from "../dist/shared/setup-platforms.js";
 import { loadLocalizedBundle } from "../dist/web/src/server/bundle-loader.js";
+import { loadBundleTestPlan, runBundleTest } from "../dist/web/src/server/bundle-test-runner.js";
 import { exampleBundleCopy } from "./example-bundle.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const conformanceBundleRoot = path.join(repoRoot, "tests/conformance/basic-bundle");
 const wgsExtractBundleRoot = path.join(repoRoot, "examples/WGSExtract");
+
+for (const planPath of [
+  path.join(repoRoot, "../scripts/installlab/gui/wgsextract-plan.json"),
+  path.join(wgsExtractBundleRoot, "test-plans/fresh-install-default-hg19-test-genome.json"),
+]) {
+  test(`#1680: ${path.basename(planPath)} data sources resolve against the current app`, async (t) => {
+    const workspaceURL = await mkdtemp(path.join(tmpdir(), "wgsextract-plan-"));
+    t.after(() => rm(workspaceURL, { recursive: true, force: true }));
+    const plan = await loadBundleTestPlan(planPath);
+    const steps = plan.steps.filter((step) => step.kind === "dataSource");
+    const report = await runBundleTest(wgsExtractBundleRoot, { ...plan, steps }, {
+      workspaceURL,
+      dryRun: true,
+      bootstrapConfig: false,
+    });
+    const failed = report.steps.find((step) => step.status === "failed");
+    assert.equal(report.status, "passed", failed && `${failed.id}: ${failed.error}`);
+  });
+}
 
 function assertWgsExtractReleaseCompatible(tag, pages) {
   const match = /^v(\d+)\.(\d+)\.(\d+)$/.exec(tag);
