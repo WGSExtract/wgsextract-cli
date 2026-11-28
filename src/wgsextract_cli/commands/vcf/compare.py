@@ -243,11 +243,7 @@ def _collect(
             readers.append((reader, primary))
             normalized_inputs.append(normalized)
         for normalized in normalized_inputs:
-            streams.append(
-                stack.enter_context(
-                    vcf_stream(normalized, normalized.parent, "normalized")
-                )
-            )
+            streams.append(stack.enter_context(vcf_stream(normalized)))
         variant_writer = None
         if params.emit_variants or group.include:
             columns = _KEY_COLUMNS + tuple(

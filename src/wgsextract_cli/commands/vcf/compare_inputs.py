@@ -19,6 +19,8 @@ from wgsextract_cli.core.builds import (
     build_from_reference_header,
 )
 from wgsextract_cli.core.dependency_checks import verify_dependencies
+from wgsextract_cli.core.execution_context import context_thread
+from wgsextract_cli.core.process_registry import terminate_trees
 from wgsextract_cli.core.ref_library.assets import read_fai_lengths
 from wgsextract_cli.core.ref_library.mitochondrial import header_md5
 from wgsextract_cli.core.ref_library.models import sequence_lengths
@@ -215,23 +217,40 @@ def verify_build(
     return dictionary
 
 
+def _drain_errors(stream: IO[bytes], errors: bytearray) -> None:
+    with stream:
+        errors.extend(stream.read(4096))
+        while stream.read(65536):
+            pass
+
+
 @contextmanager
-def vcf_stream(path: Path, work: Path, tag: str) -> Iterator[IO[str]]:
+def vcf_stream(path: Path) -> Iterator[IO[str]]:
     command = ["bcftools", "view", "--no-version", str(path)]
-    with (work / f"{tag}.stderr").open("w+", encoding="utf-8", newline="\n") as errors:
-        with popen(command, stdout=subprocess.PIPE, stderr=errors) as process:
-            try:
-                assert process.stdout is not None
-                with io.TextIOWrapper(process.stdout, encoding="utf-8") as stream:
-                    yield stream
-                if process.wait():
-                    errors.seek(0)
-                    raise WGSExtractError(
-                        f"Could not read {path}: {errors.read(4096).strip()}"
-                    )
-            finally:
-                if process.poll() is None:
-                    process.kill()
+    errors = bytearray()
+    # Drain stderr concurrently without giving bcftools a handle to a scratch file.
+    with popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as process:
+        reader = None
+        try:
+            assert process.stdout is not None and process.stderr is not None
+            thread = context_thread(_drain_errors, args=(process.stderr, errors))
+            thread.start()
+            reader = thread
+            with io.TextIOWrapper(process.stdout, encoding="utf-8") as stream:
+                yield stream
+            status = process.wait()
+        except BaseException:
+            if process.poll() is None:
+                terminate_trees([process])
+            process.wait()
+            raise
+        finally:
+            if reader is not None:
+                while reader.is_alive():
+                    reader.join(timeout=0.5)
+        if status:
+            detail = errors.decode("utf-8", errors="replace").strip()
+            raise WGSExtractError(f"Could not read {path}: {detail}")
 
 
 def _selected_lines(
@@ -365,7 +384,7 @@ def prepare(
     found_evidence = False
     skipped = 0
     with (
-        vcf_stream(source.path, work, "source") as stream,
+        vcf_stream(source.path) as stream,
         (
             gzip.open(raw_calls, "wt", compresslevel=1, encoding="utf-8", newline="\n")
             if calls

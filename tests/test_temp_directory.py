@@ -6,9 +6,11 @@ import os
 import random
 import re
 import shutil
+import subprocess
+import sys
 import threading
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 
 import psutil
@@ -17,13 +19,16 @@ import pytest
 from tests.disk_volumes import GIB, Volumes
 from tests.fat_volume import exfat_volume as exfat_volume
 from tests.htslib_helpers import needs_tools, sam_to_bam, write_fasta
+from wgsextract_cli import api
+from wgsextract_cli.commands.vcf import compare, compare_inputs
 from wgsextract_cli.core.alignment import samtools_commands
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.temp_directory import (
     configured_temp_directory,
     run_temporary_directory,
+    scratch_directory,
 )
-from wgsextract_cli.core.utils import WGSExtractError, run_command
+from wgsextract_cli.core.utils import WGSExtractError, popen, run_command
 from wgsextract_cli.main import main
 
 
@@ -685,3 +690,71 @@ def test_1241_force_replacement_is_not_lost_to_a_concurrent_fallback(
     threads[0].join()
     assert errors == []
     assert report.read_text() == "forced"
+
+
+@needs_tools("bcftools")
+def test_compare_1697_reaps_readers_before_cleanup(tmp_path, monkeypatch):
+    a, b = (tmp_path / name for name in ("a.vcf", "b.vcf"))
+    for path, ref in ((a, "A"), (b, "T")):
+        path.write_text(
+            "##fileformat=VCFv4.2\n##reference=GRCh38\n##contig=<ID=chr1,length=80>\n"
+            '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+            "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tNA\n"
+            f"chr1\t10\t.\t{ref}\tG\t.\tPASS\t.\tGT\t0/1\n"
+            "chr1\t20\t.\tA\tG\t.\tPASS\t.\tGT\t0/1\n",
+            encoding="utf-8",
+        )
+    outdir = tmp_path / "comparison"
+    timed_out = tmp_path / "reader-timed-out"
+    slow_reader = (
+        "import os, sys, threading; from pathlib import Path; "
+        "threading.Timer(20, lambda: (Path(sys.argv[2]).touch(), os._exit(99))).start(); "
+        "sys.stderr.buffer.write(b'x' * 131072); sys.stderr.flush(); "
+        "sys.stdout.write(sys.argv[1]); sys.stdout.flush()"
+    )
+    readers = []
+    locked_files = []
+    with ExitStack() as inherited_handles:
+
+        def slow_view(command, *, stdout, stderr):
+            if Path(command[-1]).name != "normalized.bcf":
+                return popen(command, stdout=stdout, stderr=stderr)
+            if stderr != subprocess.PIPE:
+                # Model a Windows stderr handle that still blocks work-dir deletion.
+                inherited_handles.callback(os.close, os.dup(stderr.fileno()))
+                locked_files.append(Path(stderr.name))
+            vcf = run_command(command, capture_output=True).stdout
+            # Pixi can stay between bcftools and its pipes as a launcher.
+            launcher = "import subprocess, sys; sys.exit(subprocess.call(sys.argv[1:]))"
+            child = [sys.executable, "-c", slow_reader, vcf, str(timed_out)]
+            reader = popen(
+                [sys.executable, "-c", launcher, *child], stdout=stdout, stderr=stderr
+            )
+            readers.append(reader)
+            return reader
+
+        @contextmanager
+        def checked_cleanup(*args, **kwargs):
+            with scratch_directory(*args, **kwargs) as work:
+                try:
+                    yield work
+                finally:
+                    blocked = any(path.is_relative_to(work) for path in locked_files)
+                    inherited_handles.close()
+                    assert not blocked
+                    assert not timed_out.exists()
+                    assert len(readers) == 2
+                    for reader in readers:
+                        assert reader.returncode not in (None, 0, 99)
+                        assert reader.stdout.closed and reader.stderr.closed
+
+        monkeypatch.setattr(compare_inputs, "popen", slow_view)
+        monkeypatch.setattr(compare, "scratch_directory", checked_cleanup)
+        result = api.vcf.compare(
+            api.VcfCompareParams(callset=(f"a={a}", f"b={b}"), outdir=outdir),
+            check=False,
+        )
+
+    assert result.exit_code == 2
+    assert "Conflicting REF bases at chr1:10" in result.error.message
+    assert not list(outdir.glob(".wgse_compare_*"))
