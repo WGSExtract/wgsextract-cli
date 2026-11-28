@@ -5,6 +5,102 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Unreleased changes are tracked in [fragments](changelog/unreleased/README.md).
 
+## [0.9.0] - 2026-11-28
+
+### Added
+- Open an hg19 or hg38 Gene page result in gene.iobio after reviewing its
+  licence and confirming each launch. The hand-off sends the gene symbol and
+  reference build, not sample files or IDs ([#1113, gene.iobio integration](https://github.com/WGSExtract/wgsextract-cli/issues/1113)).
+- **Privacy mode** under Settings → Network & Privacy pauses the app's
+  automatic network activity. While it is on, a red **PRIVACY** badge shows
+  under the app's name; its tooltip says where to turn it off
+  ([#1548](https://github.com/WGSExtract/wgsextract-cli/pull/1548)).
+- Gene page now checks required reference files (CRAM reference genome and RefSeq Gene Maps, excluding missing VCF annotations) before running and offers **Cancel**, **Continue**, or **Install and Continue**, with a dedicated sidebar icon ([#1550, GUI UX, user docs, and rendered HTML docs](https://github.com/WGSExtract/wgsextract-cli/pull/1550)).
+- Commands with fresh permanent outputs on disk now reuse them directly: result cards open immediately with a **Force Run Again** button, HTML reports open directly, and output-only commands prompt **Cancel** vs. **Force Run Again** (passing `--force` or `--restart` where supported) ([#1550, GUI UX, user docs, and rendered HTML docs](https://github.com/WGSExtract/wgsextract-cli/pull/1550)).
+- Separated desktop end-user documentation (`gui/docs/`) from developer documentation (`gui/devdocs/`), added user guides for Basic/Advanced mode, Reference Data, Reference Genomes, Tools, Settings, and Desktop Privacy, and documented the CLI-vs-GUI privacy and network boundary ([#1550, GUI UX, user docs, and rendered HTML docs](https://github.com/WGSExtract/wgsextract-cli/pull/1550)).
+- Inline errors, result notices, result summaries, and terminal output now turn `https://wgse.bio/...` URLs and repository doc references into clickable browser links ([#1550, GUI UX, user docs, and rendered HTML docs](https://github.com/WGSExtract/wgsextract-cli/pull/1550)).
+- On first launch, WGS Extract asks before going online. Choose **OK** to
+  continue setup and enable update checks at launch, or **Not now** to stay
+  offline and open **Settings → Network & Privacy**
+  ([#1591, network principles](https://github.com/WGSExtract/wgsextract-cli/issues/1591)).
+- Network & Privacy settings show whether the OS reports a metered or
+  constrained connection. Automatic mode uses Low on those connections and
+  asks before setup downloads. You can also choose Full, Low, or Off.
+- Basic and Advanced tools show the CLI’s certification level. Hover over or
+  focus a badge to see what the level means, or select it to see the command’s
+  evidence.
+- Tools, Reference Data and Reference Genomes each have a keyword filter on
+  their title line. Typed words match a row's name, tags, status or shown
+  columns, such as a build on Reference Genomes ([#1628, library sort and filter](https://github.com/WGSExtract/wgsextract-cli/pull/1628)).
+- The Tools page shows the computer the CLI runs on: operating system and
+  version, architecture, CPU cores and threads, memory, and free disk space
+  where WGS Extract keeps its files ([#1657, Tools page follow-ups](https://github.com/WGSExtract/wgsextract-cli/pull/1657)).
+
+- The Tools page has a "Hide mandatory and pre-installed" checkbox beside its
+  filter, checked by default. A mandatory or pre-installed tool that is
+  missing stays in the list ([#1657, Tools page follow-ups](https://github.com/WGSExtract/wgsextract-cli/pull/1657)).
+- The Tools page installs Dorado. Its Install button first shows Dorado's
+  licence, the Oxford Nanopore Technologies PLC. Public License Version 2.0
+  (research use only), and installs only when you choose **Accept and
+  install**. PLINK 2 now has an Install button too
+  ([#1658](https://github.com/WGSExtract/wgsextract-cli/pull/1658)).
+
+### Changed
+- Bump the bundled WGSExtract CLI installer target to `v0.9.0` ([release notes](https://github.com/WGSExtract/wgsextract-cli/releases/tag/v0.9.0)).
+- The gene.iobio consent dialog now lists the local files used for the current gene result and which indexes to select on the website. The browser link still sends only the gene and reference build ([#1113, gene.iobio integration](https://github.com/WGSExtract/wgsextract-cli/issues/1113)).
+- After Setup, the desktop app launches the installed CLI without starting Pixi
+  for every call. Older runtimes and explicit Pixi overrides retain the offline
+  Pixi launcher ([#1506, CLI startup](https://github.com/WGSExtract/wgsextract-cli/issues/1506)).
+- The desktop app starts its installed CLI without loading the subprocess
+  fallback unless the cached activation fails.
+- When **Check for updates at launch** is enabled and Privacy mode is off,
+  the desktop app offers newer releases in the sidebar. A failed startup
+  check shows nothing. **File → Check for Updates…** still checks on request.
+- Running the app from a source checkout (`make run`, `make tauri`,
+  `npm run dev`) keeps its own data folder, `WGSExtract-gui-dev`, so it no
+  longer replaces the installed app's copy of the bundle or its CLI runtime.
+  It also keeps its own users workspace, `~/wgs-extract-dev`.
+- Removed the inline **View reads** button below BAM/CRAM selectors and removed the redundant **Reference Genome** dropdown from the Microarray page (automatically detected from the BAM/CRAM) ([#1550, GUI UX, user docs, and rendered HTML docs](https://github.com/WGSExtract/wgsextract-cli/pull/1550)).
+- Removed the angled "AI written" corner banner from both documentation sites ([#1550, GUI UX, user docs, and rendered HTML docs](https://github.com/WGSExtract/wgsextract-cli/pull/1550)).
+- In Basic mode, the BAM page's Sort and Index buttons stay visible but are
+  disabled, with a tooltip saying why, when the file is already coordinate
+  sorted or indexed. Sorted is now read from the file's header (`SO:coordinate`)
+  rather than guessed from its name, and the status refreshes after a command
+  finishes or the mode changes.
+- Outputs go to a `WGSEv6/` folder beside the input, with manifests in
+  `WGSEv6/manifests/`; existing `wgse/` folders keep being used.
+- Desktop pages and tools use genomics icons for file formats and analysis
+  tasks. Standard controls and Emoji mode keep their existing icons.
+- The Tools page labels optional tools that ship with WGS Extract, such as
+  fastp, FastQC, samblaster and minimap2, "pre-installed" instead of
+  "optional", since they can't be removed on their own ([#1621, VariantQC and Tools labels](https://github.com/WGSExtract/wgsextract-cli/pull/1621)).
+- The Tools page no longer shows a certification badge beside each tool's
+  Install, Uninstall or check button. The badge was the rating of the
+  dependency manager, not the tool, so Java 17 and DISCVRSeq appeared
+  Experimental ([#1621, VariantQC and Tools labels](https://github.com/WGSExtract/wgsextract-cli/pull/1621)).
+- The Tools page lists installed tools first (mandatory, then pre-installed,
+  then the rest), then missing tools, then tools not available on this
+  platform. Reference Data lists installed resources before missing ones.
+  Each group is alphabetical ([#1628, library sort and filter](https://github.com/WGSExtract/wgsextract-cli/pull/1628)).
+- In Basic mode the Tools page leaves out tools that only Advanced features
+  use ([#1657, Tools page follow-ups](https://github.com/WGSExtract/wgsextract-cli/pull/1657)).
+- Tools, Reference Data and Reference Genomes come back at once when you
+  return to them: their lists are kept until an install, download, uninstall
+  or other change that affects them, or until the app restarts ([#1657, Tools page follow-ups](https://github.com/WGSExtract/wgsextract-cli/pull/1657)).
+- A "not available" tool's row says why it can't be had on this computer.
+  A tool's tooltip no longer repeats the row's note ([#1657, Tools page follow-ups](https://github.com/WGSExtract/wgsextract-cli/pull/1657)).
+
+### Fixed
+- Reference Data shows the installed bootstrap version, current download size,
+  and an update badge for older installations. The reference path shows the
+  actual folder, and the Gene page sidebar label stays on one line beside its icon.
+- Switching between Basic and Advanced always redraws the page, even when
+  saving the choice fails ([#1657, Tools page follow-ups](https://github.com/WGSExtract/wgsextract-cli/pull/1657)).
+- Setup can initialize the reference library with the bundled v0.8.10 CLI,
+  which predates the new network-mode options. Local commands still run in
+  Low Data and Off modes; the bundled CLI uses its own download consent
+  ([#1674, bundled CLI setup](https://github.com/WGSExtract/wgsextract-cli/issues/1674)).
+
 ## [0.8.10] - 2026-11-24
 
 ### Added
