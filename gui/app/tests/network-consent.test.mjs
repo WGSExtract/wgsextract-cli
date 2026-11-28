@@ -11,7 +11,7 @@ import { effectiveNetworkMode, networkAllowed } from "../dist/shared/network-set
 import { loadLocalizedBundle } from "../dist/web/src/server/bundle-loader.js";
 import { createProcessManager } from "../dist/web/src/server/process-runner.js";
 import { createRequestHandler } from "../dist/web/src/server/routes.js";
-import { migrateNetworkSettingsAfterCompletedSetup, readNetworkSettings } from "../dist/web/src/server/network-settings.js";
+import { migrateNetworkSettingsAfterCompletedSetup, readNetworkSettings, saveNetworkSettings } from "../dist/web/src/server/network-settings.js";
 import { createNetworkCostDetector, systemNetworkCost } from "../dist/web/src/server/network-cost/detector.js";
 import { withCliNetworkPolicy } from "../dist/web/src/server/cli-network-policy.js";
 import { appSettingsPath } from "../dist/web/src/server/workspace-location.js";
@@ -144,6 +144,43 @@ async function browserFixture(t, { cost = "unconstrained", cli = false } = {}) {
 }
 
 const browserTestOptions = { skip: !existsSync(executablePath) && "Requires installed Chromium.", timeout: 120_000 };
+
+test("#1674 bootstrap accepts both the pinned CLI and the network-aware tree", async (t) => {
+    const root = await isolatedRoot(t);
+    const appData = path.join(root, "App Data");
+    const source = path.join(appData, "runtime", "wgsextract-cli", "app", "src", "wgsextract_cli");
+    await mkdir(path.join(source, "core"), { recursive: true });
+    await writeFile(path.join(source, "__init__.py"), '__version__ = "0.8.10"\n');
+    const windows = process.platform === "win32";
+    const script = path.join(root, `bootstrap-reference-library.${windows ? "ps1" : "sh"}`);
+    const policyModule = path.join(source, "core", "network_policy.py");
+    const invocation = windows
+        ? ["powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script]]
+        : ["/bin/sh", [script]];
+    const [executable, args] = invocation;
+    await writeFile(script, windows
+        ? 'if ($args.Count -ne 0) { exit 2 }; Write-Output "BOOTSTRAPPED"\n'
+        : 'if [ "$#" -ne 0 ]; then exit 2; fi; echo BOOTSTRAPPED\n');
+    const manager = createProcessManager({ maxOutputBytes: 1024, maxErrorBytes: 1024 });
+    t.after(() => manager.terminateAllProcesses());
+    const run = withCliNetworkPolicy(manager.runProcess);
+    const launch = (...flags) => run(executable, [...args, ...flags], { cwd: root, env: { ...process.env, WGSEXTRACT_GUI_APP_DATA: appData } });
+    await saveNetworkSettings({ consent: "accepted", mode: "full" });
+    assert.match((await launch()).stdout, /BOOTSTRAPPED/);
+
+    await saveNetworkSettings({ mode: "low" });
+    await assert.rejects(launch(), { status: 403 });
+    assert.match((await launch("--allow-large-download")).stdout, /BOOTSTRAPPED/);
+    await saveNetworkSettings({ mode: "off" });
+    await assert.rejects(launch("--allow-large-download"), { status: 403 });
+
+    await writeFile(policyModule, "");
+    await writeFile(script, windows
+        ? 'if (($args -join " ") -eq "--allow-large-download --network low") { Write-Output "BOOTSTRAPPED" } else { exit 2 }\n'
+        : 'case "$*" in "--allow-large-download --network low") echo BOOTSTRAPPED;; *) exit 2;; esac\n');
+    await saveNetworkSettings({ mode: "low" });
+    assert.match((await launch("--allow-large-download")).stdout, /BOOTSTRAPPED/);
+});
 
 test("#1591 first launch makes no outbound requests until OK, then starts setup and checks for updates", browserTestOptions, async (t) => {
     const { page, external, setupCalls, updates, startupUpdate } = await browserFixture(t);

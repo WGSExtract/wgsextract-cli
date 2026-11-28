@@ -7,7 +7,7 @@ import { bundleEnvironment } from "./paths.js";
 import { isPlatformScriptReference, resolvePlatformScriptPath } from "./platform-scripts.js";
 import { localJobServerURL } from "./local-job-server-url.js";
 import type { NetworkMode } from "../../../shared/network-settings.js";
-import { cliNetworkArguments, isWgsExtractCli } from "./cli-network-policy.js";
+import { cliNetworkArguments, isLegacyBundledCli, isWgsExtractCli } from "./cli-network-policy.js";
 
 const defaultStartupTimeoutSeconds = 60;
 
@@ -108,6 +108,10 @@ export function createJobServer(spec: JobServerSpec, bundleRoot: string, runProc
     return {
         ...(networkMode ? { networkMode } : {}),
         address: () => {
+            // This CLI cannot apply per-job network modes. Use the guarded command fallback.
+            if (networkMode && isLegacyBundledCli(spec.command.executable, spec.command.arguments ?? [], { ...process.env, ...bundleEnvironment(bundleRoot) })) {
+                return Promise.resolve(undefined);
+            }
             starting ??= start();
             return starting;
         },
