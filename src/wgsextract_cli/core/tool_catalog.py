@@ -19,6 +19,7 @@ OPTIONAL_TOOLS = [
     "bwa-mem2",
     "bwa-mem3",
     "minimap2",
+    "bonefish",
     "pbmm2",
     "pbsv",
     "sniffles",
@@ -68,6 +69,9 @@ OPTIONAL_TOOLS = [
 
 # Optional tools users install themselves (no Pixi environment): how to.
 INSTALL_HINTS = {
+    "bonefish": "Install bonefish 0.5.2 or later from "
+    "https://github.com/DylanCosto/bonefish/releases/tag/v0.5.2 and put it on PATH, "
+    "or use --aligner minimap2.",
     "plink2": "Download PLINK 2 for your system from "
     "https://www.cog-genomics.org/plink/2.0/ and put plink2 on PATH. "
     "It is optional, used only by score pgs --plink2-check.",
@@ -200,6 +204,7 @@ def unavailable_message(tool: str) -> str:
 PLATFORM_ONLY_TOOLS = {
     "bwa-mem2": ("linux", "darwin", "win32"),
     "bwa-mem3": ("linux", "darwin"),
+    "bonefish": ("linux", "darwin"),
     "sambamba": ("linux",),
     "cyrius": ("linux", "darwin"),
     "paraphase": ("linux", "darwin"),
@@ -306,7 +311,7 @@ PIXI_TOOL_ENVS = {
     "haplogrep3": "default",
     "haplocheck": "default",
     "gatk": "gatk",
-    "delly": "default",
+    "delly": "delly" if sys.platform == "darwin" else "default",
     "freebayes": "freebayes",
     "samtools": "default",
     "bcftools": "default",
@@ -350,7 +355,7 @@ PIXI_TOOL_ENVS = {
     "cyrius_python": "cyrius",
 }
 # Environments without a Python of their own: their tools are probed from here.
-PIXI_ENVS_WITHOUT_PYTHON = frozenset({"deepvariant", "java17"})
+PIXI_ENVS_WITHOUT_PYTHON = frozenset({"deepvariant", "delly", "java17"})
 
 
 # Interpreters only their own Pixi environment provides (its packages matter).

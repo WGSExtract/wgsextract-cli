@@ -243,6 +243,12 @@ def test_914_selector_regressions_do_not_start_the_cli_matrix() -> None:
     assert "tests/test_table_writer.py" not in select_tests(paths)
 
 
+def test_1637_reference_certification_test_edits_stay_in_policy_lane() -> None:
+    path = "tests/test_ci_reference_store.py"
+    assert not routes([path])["cli"]
+    assert path in ci_test_targets([path])
+
+
 def test_1339_shadow_regressions_only_run_in_the_ci_policy_lane() -> None:
     paths = sorted(
         path.relative_to(ROOT).as_posix()
@@ -428,6 +434,14 @@ def test_914_empty_selection_skips_without_starting_pixi() -> None:
 def test_914_transitive_docs_reader_has_an_executable_lane() -> None:
     paths = ["scripts/build_mockup_previews.py"]
     assert "tests/test_mockup_review_edges.py" in select_tests(paths)
+    assert routes(paths)["cli"]
+
+
+def test_1636_longrun_only_change_selects_its_subprocess_tests() -> None:
+    paths = ["scripts/longrun.py"]
+    selected = select_tests(paths)
+    assert selected != "all"
+    assert "tests/test_longrun.py" in selected
     assert routes(paths)["cli"]
 
 

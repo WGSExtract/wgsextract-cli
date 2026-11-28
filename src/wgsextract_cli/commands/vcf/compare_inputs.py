@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import gzip
+import io
 import re
 import subprocess
-from collections.abc import Iterator
-from contextlib import contextmanager
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import IO
@@ -23,7 +25,13 @@ from wgsextract_cli.core.ref_library.models import sequence_lengths
 from wgsextract_cli.core.reference_evidence import ReferenceEvidence, readable
 from wgsextract_cli.core.reference_evidence_records import bcftools_gvcf_header
 from wgsextract_cli.core.results import warn
-from wgsextract_cli.core.utils import UsageError, WGSExtractError, popen, run_command
+from wgsextract_cli.core.utils import (
+    UsageError,
+    WGSExtractError,
+    popen,
+    run_command,
+    run_pipeline,
+)
 from wgsextract_cli.core.variant_confidence import SPLIT_TAG, SYMBOLIC_REFERENCE_ALTS
 from wgsextract_cli.core.variant_files import chromosome_aliases, vcf_header_chromosomes
 
@@ -33,6 +41,7 @@ _SEPARATOR = re.compile(r"[/|]")
 _STALE_INFO = {"AC", "AN", "AF", "NS"}
 PARTIAL = "WGSE_COMPARE_PARTIAL"
 ALIGN_ORIGIN = "WGSE_COMPARE_ALIGN_ORIGIN"
+SOURCE_RECORD = "WGSE_COMPARE_SOURCE_RECORD"
 
 
 def require_local(path: str | Path) -> Path:
@@ -210,12 +219,11 @@ def verify_build(
 def vcf_stream(path: Path, work: Path, tag: str) -> Iterator[IO[str]]:
     command = ["bcftools", "view", "--no-version", str(path)]
     with (work / f"{tag}.stderr").open("w+", encoding="utf-8", newline="\n") as errors:
-        with popen(
-            command, stdout=subprocess.PIPE, stderr=errors, text=True
-        ) as process:
+        with popen(command, stdout=subprocess.PIPE, stderr=errors) as process:
             try:
                 assert process.stdout is not None
-                yield process.stdout
+                with io.TextIOWrapper(process.stdout, encoding="utf-8") as stream:
+                    yield stream
                 if process.wait():
                     errors.seek(0)
                     raise WGSExtractError(
@@ -256,6 +264,76 @@ def genotype(fields: list[str]) -> list[str]:
     return _SEPARATOR.split(values.get("GT", "."))
 
 
+def _sequence_record(fields: list[str], alts: list[str], record_id: int) -> None:
+    remap = {"0": "0"}
+    small = []
+    for index, alt in enumerate(alts, 1):
+        if _BASES.fullmatch(alt):
+            small.append(alt)
+            remap[str(index)] = str(len(small))
+    fields[4] = ",".join(small) or "."
+    sample = dict(zip(fields[8].split(":"), fields[9].split(":"), strict=False))
+    gt = re.split(r"([/|])", sample.get("GT", "."))
+    gt[::2] = [remap.get(allele, ".") for allele in gt[::2]]
+    fields[2] = fields[5] = "."
+    flags = [PARTIAL] if "." in gt[::2] else []
+    if len(small) > 1:
+        flags.append(f"{SOURCE_RECORD}={record_id}")
+    fields[7] = ";".join(flags) or "."
+    fields[8:10] = ["GT", "".join(gt)]
+    if "FT" in sample:
+        fields[8] += ":FT"
+        fields[9] += ":" + sample["FT"]
+
+
+def _normalize_calls(
+    raw: Path, normalized: Path, ref: Path | None, *, atomize: bool
+) -> None:
+    norm = ["bcftools", "norm", "--no-version"]
+    split = ["-m", "-any", "--multi-overlaps", "."]
+    stages: list[Sequence[object]]
+    if atomize:
+        assert ref is not None
+        align = ["-f", ref, "-c", "e"]
+        stages = [
+            # Atomizing several ALTs together can assign a primitive to the
+            # wrong GT slot. Split and check the full REF before atomizing.
+            [*norm, *split, *align, "-Ou", raw],
+            [*norm, "--atomize", "--atom-overlaps", ".", "-Ou"],
+            [*norm, *align, "-Ou"],
+        ]
+    else:
+        stages = [[*norm, *split, "--old-rec-tag", SPLIT_TAG, "-Ou", raw]]
+        if ref is not None:
+            stages.append(
+                [
+                    *norm,
+                    "-f",
+                    ref,
+                    "-c",
+                    "e",
+                    "--old-rec-tag",
+                    ALIGN_ORIGIN,
+                    "-Ou",
+                ]
+            )
+    work = raw.parent
+    stages.append(
+        [
+            "bcftools",
+            "sort",
+            "-m",
+            "128M",
+            "-T",
+            work / "sort",
+            "-Ob",
+            "-o",
+            normalized,
+        ]
+    )
+    run_pipeline(stages, stderr_dir=work, description="Normalize comparison callset")
+
+
 def _evidence_record(fields: list[str], from_bcftools: bool) -> tuple[bool, bool]:
     alts = set(fields[4].split(","))
     confidence = bool(alts & SYMBOLIC_REFERENCE_ALTS) or (
@@ -277,41 +355,60 @@ def prepare(
     calls: bool,
     evidence: bool,
     blockers_only: bool = False,
+    atomize: bool = False,
 ) -> tuple[Path, ReferenceEvidence | None, int]:
     work.mkdir()
     mapped = dictionary.mapping(source.contigs)
-    raw_calls = work / "calls.vcf"
-    raw_evidence = work / "confidence.vcf"
+    raw_calls = work / "calls.vcf.gz"
+    raw_evidence = work / "confidence.vcf.gz"
     from_bcftools = bcftools_gvcf_header(source.header)
     found_evidence = False
     skipped = 0
     with (
         vcf_stream(source.path, work, "source") as stream,
-        raw_calls.open("w", encoding="utf-8", newline="\n") as call_file,
-        raw_evidence.open("w", encoding="utf-8", newline="\n") as evidence_file,
+        (
+            gzip.open(raw_calls, "wt", compresslevel=1, encoding="utf-8", newline="\n")
+            if calls
+            else nullcontext()
+        ) as call_file,
+        (
+            gzip.open(
+                raw_evidence, "wt", compresslevel=1, encoding="utf-8", newline="\n"
+            )
+            if evidence
+            else nullcontext()
+        ) as evidence_file,
     ):
         header = _headers(source, mapped, dictionary.names)
-        if any(f"##INFO=<ID={tag}," in header for tag in (PARTIAL, ALIGN_ORIGIN)):
+        reserved = (
+            (PARTIAL, ALIGN_ORIGIN, SOURCE_RECORD)
+            if atomize
+            else (PARTIAL, ALIGN_ORIGIN)
+        )
+        if any(f"##INFO=<ID={tag}," in header for tag in reserved):
             raise UsageError(
                 f"{source.path}: header contains reserved comparison fields."
             )
         marker = f'##INFO=<ID={PARTIAL},Number=0,Type=Flag,Description="Original genotype incomplete">\n'
-        call_file.write(header.replace("\n#CHROM\t", f"\n{marker}#CHROM\t"))
-        if evidence:
+        if atomize:
+            marker += f'##INFO=<ID={SOURCE_RECORD},Number=1,Type=String,Description="Source multiallelic record identifier">\n'
+        if call_file is not None:
+            call_file.write(header.replace("\n#CHROM\t", f"\n{marker}#CHROM\t"))
+        if evidence_file is not None:
             identity = {name: name for name in source.contigs}
             evidence_file.write(_headers(source, identity, identity))
-        for fields in _selected_lines(source, stream):
+        for record_id, fields in enumerate(_selected_lines(source, stream), 1):
             name = fields[0]
             if name not in mapped:
                 raise UsageError(
                     f"{source.path}: contig {name!r} is not declared in the header."
                 )
-            if evidence:
+            if evidence_file is not None:
                 confident, keep = _evidence_record(fields, from_bcftools)
                 found_evidence |= confident
                 if keep or blockers_only:
                     evidence_file.write("\t".join(fields) + "\n")
-            if calls:
+            if call_file is not None:
                 fields[0] = mapped[name]
                 alts = fields[4].split(",")
                 skipped += sum(
@@ -321,6 +418,10 @@ def prepare(
                     for alt in alts
                 )
                 if alts != ["."] and not any(_BASES.fullmatch(alt) for alt in alts):
+                    continue
+                if atomize:
+                    _sequence_record(fields, alts, record_id)
+                    call_file.write("\t".join(fields) + "\n")
                     continue
                 tags = [
                     tag
@@ -336,56 +437,10 @@ def prepare(
                     tags = [tag for tag in tags if tag != "."] + [PARTIAL]
                 fields[7] = ";".join(tags) or "."
                 call_file.write("\t".join(fields) + "\n")
-    normalized = work / "normalized.vcf"
+    normalized = work / "normalized.bcf"
     if calls:
-        split = work / "split.bcf"
-        # Keep non-target ALTs missing in the emitted GT; the marker preserves original completeness.
-        run_command(
-            [
-                "bcftools",
-                "norm",
-                "--no-version",
-                "-m",
-                "-any",
-                "--multi-overlaps",
-                ".",
-                "--old-rec-tag",
-                SPLIT_TAG,
-                "-Ob",
-                "-o",
-                split,
-                raw_calls,
-            ],
-            capture_output=True,
-        )
+        _normalize_calls(raw_calls, normalized, ref, atomize=atomize)
         raw_calls.unlink()
-        align = split
-        if ref is not None:
-            align = work / "aligned.bcf"
-            run_command(
-                [
-                    "bcftools",
-                    "norm",
-                    "--no-version",
-                    "-f",
-                    ref,
-                    "-c",
-                    "e",
-                    "--old-rec-tag",
-                    ALIGN_ORIGIN,
-                    "-Ob",
-                    "-o",
-                    align,
-                    split,
-                ],
-                capture_output=True,
-            )
-            split.unlink()
-        run_command(
-            ["bcftools", "sort", "-T", work / "sort", "-Ov", "-o", normalized, align],
-            capture_output=True,
-        )
-        align.unlink()
     evidence_source = None
     if found_evidence or blockers_only:
         sorted_evidence = work / "sorted.g.vcf.gz"
@@ -393,6 +448,8 @@ def prepare(
             [
                 "bcftools",
                 "sort",
+                "-m",
+                "128M",
                 "-T",
                 work / "evidence-sort",
                 "-Oz",
@@ -413,5 +470,5 @@ def prepare(
             if ref is not None:
                 verify_dependencies(["tabix"])
                 evidence_source = evidence_source.normalized(str(ref), work)
-    raw_evidence.unlink()
+    raw_evidence.unlink(missing_ok=True)
     return normalized, evidence_source, skipped

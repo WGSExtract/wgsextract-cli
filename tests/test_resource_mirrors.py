@@ -9,6 +9,7 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 from urllib.request import urlopen
 
@@ -20,8 +21,13 @@ from scripts import mirror_resource_transfer as transfer
 from tests.htslib_helpers import needs_tools
 from tests.http_server import RangeServer
 from wgsextract_cli import api
-from wgsextract_cli.core import gnomad_af, resource_mirrors
+from wgsextract_cli.core import dev_download_cache, gnomad_af, resource_mirrors
+from wgsextract_cli.core.config import settings
+from wgsextract_cli.core.network_policy import NetworkRestricted, network_options
+from wgsextract_cli.core.ref_library import segmented
 from wgsextract_cli.core.ref_library.downloads import download_file
+from wgsextract_cli.core.ref_library.segmented import ranged_revision
+from wgsextract_cli.core.utils import run_command
 
 
 @pytest.fixture
@@ -238,6 +244,33 @@ def test_1046_resume_verifies_assembled_prefix_before_skipping_parts(
     assert not work.exists()
 
 
+@pytest.mark.parametrize(
+    ("mode", "complete"), [("off", True), ("low", True), ("off", False)]
+)
+def test_1591_verified_mirror_staging_can_publish_without_network(
+    source, mirror_catalog, tmp_path, mode, complete
+):
+    data = b"first part, then the rest"
+    entry = mirror_catalog(source, data, split=10)
+    target = tmp_path / "download"
+    work = tmp_path / "download.mirror"
+    work.mkdir()
+    (work / "assembled").write_bytes(data[:10])
+    if complete:
+        (work / "part0001").write_bytes(data[10:])
+
+    with network_options(mode, False):
+        if complete:
+            assert download_file(entry["upstream_url"], str(target), use_cache=False)
+            assert target.read_bytes() == data
+        else:
+            with pytest.raises(NetworkRestricted, match="--network off"):
+                download_file(entry["upstream_url"], str(target), use_cache=False)
+            assert not target.exists()
+            assert (work / "assembled").read_bytes() == data[:10]
+    assert not source.requests
+
+
 @pytest.mark.parametrize("available", [True, False])
 def test_1046_restricted_resource_never_uses_even_an_accidental_mirror(
     source, mirror_catalog, tmp_path, caplog, available
@@ -277,8 +310,10 @@ def test_1046_gnomad_stream_restarts_without_duplicate_af_rows(
         '##INFO=<ID=AF_joint,Number=A,Type=Float,Description="AF">\n'
         '##INFO=<ID=AF_grpmax_joint,Number=A,Type=Float,Description="grpmax AF">\n'
         '##INFO=<ID=nhomalt_joint,Number=A,Type=Integer,Description="homozygotes">\n'
+        '##INFO=<ID=fafmax_faf95_max_joint,Number=A,Type=Float,Description="grpmax FAF95">\n'
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
-        "chr1\t100\t.\tA\tG\t.\tPASS\tAF_joint=0.25;AF_grpmax_joint=0.5;nhomalt_joint=1\n"
+        "chr1\t100\t.\tA\tG\t.\tPASS\t"
+        "AF_joint=0.25;AF_grpmax_joint=0.5;nhomalt_joint=1;fafmax_faf95_max_joint=0.125\n"
         "chr1\t200\t.\tC\tT\t.\tPASS\tAF_joint=0.5\n"
     )
     data = gzip.compress(vcf.encode())
@@ -293,11 +328,93 @@ def test_1046_gnomad_stream_restarts_without_duplicate_af_rows(
     table = tmp_path / "library/downloads/gnomad_hg38.tsv.gz"
     with gzip.open(table, "rt") as output:
         assert output.read().splitlines()[-2:] == [
-            "chr1\t100\tA\tG\t0.25\t0.5\t1",
-            "chr1\t200\tC\tT\t0.5\t.\t.",
+            "chr1\t100\tA\tG\t0.25\t0.5\t1\t0.125",
+            "chr1\t200\tC\tT\t0.5\t.\t.\t.",
         ]
     assert ("upstream" in source.paths) is corrupt_second_part
     assert table.with_suffix(table.suffix + ".tbi").is_file()
+
+
+@needs_tools("bcftools", "bgzip", "tabix")
+@pytest.mark.parametrize("catalogued", [True, False])
+def test_1591_gnomad_resumes_saved_contigs_offline(
+    source, mirror_catalog, tmp_path, monkeypatch, catalogued
+):
+    entry = mirror_catalog(source, b"published contig bytes", allowed=catalogued)
+    monkeypatch.setattr(gnomad_af, "GNOMAD_V4_URL", entry["upstream_url"])
+    monkeypatch.setattr(gnomad_af, "GNOMAD_V4_CONTIGS", ["chr1"])
+    library = tmp_path / "library"
+    parts = library / "downloads" / f".gnomad_hg38_parts_v{gnomad_af._TABLE_SCHEMA}"
+    parts.mkdir(parents=True)
+    row = b"chr1\t100\tA\tG\t0.25\t0.5\t1\t0.125\n"
+    plain = tmp_path / "chr1.tsv"
+    plain.write_bytes(row)
+    with (parts / "chr1.tsv.gz").open("wb") as part:
+        run_command(["bgzip", "-c", str(plain)], stdout=part)
+
+    with network_options("off", False):
+        assert gnomad_af.build_gnomad_af(str(library), workers=1, download=True)
+    table = library / "downloads" / "gnomad_hg38.tsv.gz"
+    result = run_command(["tabix", str(table), "chr1:100-100"], capture_output=True)
+    assert result.stdout.encode() == row
+    assert not source.requests
+
+
+@needs_tools("bcftools", "bgzip", "tabix")
+@pytest.mark.parametrize(
+    ("mode", "location"),
+    [("off", "staged"), ("low", "staged"), ("off", "cache"), ("off", "missing")],
+)
+def test_1591_gnomad_mirror_feeder_only_requires_network_for_missing_raw_parts(
+    source, mirror_catalog, tmp_path, monkeypatch, caplog, mode, location
+):
+    vcf = (
+        "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=1000>\n"
+        '##INFO=<ID=AF_joint,Number=A,Type=Float,Description="AF">\n'
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        "chr1\t100\t.\tA\tG\t.\tPASS\tAF_joint=0.25\n"
+    )
+    data = gzip.compress(vcf.encode())
+    split = len(data) // 2
+    entry = mirror_catalog(source, data, split=split)
+    monkeypatch.setattr(gnomad_af, "GNOMAD_V4_URL", entry["upstream_url"])
+    monkeypatch.setattr(gnomad_af, "GNOMAD_V4_CONTIGS", ["chr1"])
+    library = tmp_path / "library"
+    parts = library / "downloads" / f".gnomad_hg38_parts_v{gnomad_af._TABLE_SCHEMA}"
+    staging = parts / "chr1.tsv.gz.mirror"
+    staging.mkdir(parents=True)
+    if location == "cache":
+        monkeypatch.setitem(settings, "dev", {"download_cache": True})
+        monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+    for index, chunk in enumerate((data[:split], data[split:])):
+        part = staging / f"part{index:04d}"
+        if location == "missing" and index == 1:
+            break
+        part.write_bytes(chunk)
+        if location == "cache":
+            pin = entry["parts"][index]
+            dev_download_cache.store_download_in_dev_cache(
+                pin["url"], part, checksum_hint=f"sha256:{pin['sha256']}"
+            )
+            part.unlink()
+
+    result = api.ref.gnomad(
+        api.RefGnomadParams(ref=library, release="4.1", network=mode, download=True),
+        check=False,
+    )
+    table = library / "downloads/gnomad_hg38.tsv.gz"
+    assert not source.requests
+    if location == "missing":
+        assert result.exit_code == 2
+        assert result.error and "--network off" in result.error.message
+        assert not table.exists()
+        assert not (parts / "chr1.tsv.gz.partial").exists()
+        assert (staging / "part0000").read_bytes() == data[:split]
+        assert "MIRROR_FALLBACK" not in caplog.text
+    else:
+        assert result.exit_code == 0
+        query = run_command(["tabix", str(table), "chr1:100-100"], capture_output=True)
+        assert query.stdout == "chr1\t100\tA\tG\t0.25\t.\t.\t.\n"
 
 
 @needs_tools("bcftools", "bgzip")
@@ -305,14 +422,10 @@ def test_1046_gnomad_stream_restarts_without_duplicate_af_rows(
 def test_1213_cancelled_gnomad_disconnects_stalled_download(
     source, mirror_catalog, tmp_path, monkeypatch, stall
 ):
-    from wgsextract_cli.core.ref_library import segmented
-
     data = b"a" * (2 << 20)
     entry = mirror_catalog(source, data, allowed=stall.endswith("mirror"))
     path = "mirror-0" if stall.endswith("mirror") else "upstream"
     if stall == "segmented-mirror":
-        from wgsextract_cli.core.ref_library.segmented import ranged_revision
-
         source.etags = True
         monkeypatch.setattr(segmented, "ranged_revision", ranged_revision)
         monkeypatch.setattr(segmented, "SEGMENTED_MIN_SIZE", len(data))
@@ -340,11 +453,15 @@ def test_1213_cancelled_gnomad_disconnects_stalled_download(
         )
 
     worker = threading.Thread(target=build, daemon=True)
+    canceller = threading.Thread(target=cancel.cancel, daemon=True)
     worker.start()
     try:
         assert started.wait(5), "gnomAD did not begin streaming"
-        cancel.cancel()
-        worker.join(3)
+        deadline = time.monotonic() + 3
+        canceller.start()
+        canceller.join(max(0, deadline - time.monotonic()))
+        assert not canceller.is_alive(), "gnomAD cancellation request stalled"
+        worker.join(max(0, deadline - time.monotonic()))
         assert not worker.is_alive(), "cancelled gnomAD stream did not return promptly"
         assert result[0].exit_code == 130
         assert disconnected.wait(1), "client did not shut down the stalled response"
@@ -352,9 +469,14 @@ def test_1213_cancelled_gnomad_disconnects_stalled_download(
         assert not [file for file in tmp_path.rglob("*.gz*") if file.is_file()]
         if stall.endswith("mirror"):
             assert list(tmp_path.rglob("part0000.partial*"))
+        if stall == "segmented-mirror":
+            assert source.gets() == [f"bytes=0-{len(data) - 1}"]
+            assert list(tmp_path.rglob("part0000.partial.segments"))
     finally:
         release.set()
         worker.join(5)
+        if canceller.ident is not None:
+            canceller.join(5)
 
 
 @pytest.mark.skipif(os.name != "posix", reason="requires POSIX SIGTERM")

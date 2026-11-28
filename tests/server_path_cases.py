@@ -8,6 +8,10 @@ from wgsextract_cli.server.operations import find, operations
 
 _DATA = r"C:\data"
 _FILE = _DATA + r"\in.vcf.gz"
+_PANEL_CNV_PATHS = {
+    "target_cnv": _DATA + r"\sample.target-cnv.tsv",
+    "target_cnv_manifest": _DATA + r"\sample.target-cnv.tsv.manifest.json",
+}
 # Requests each operation accepts with every path inside _DATA, beyond its
 # required fields; a field's companions are what it needs beside it.
 _BASE_REQUESTS: dict[str, dict[str, Any]] = {
@@ -25,6 +29,7 @@ _BASE_REQUESTS: dict[str, dict[str, Any]] = {
     "lookup": {"locus": "GRCh38:chr1:1"},
     "vcf/compare": {"callset": [f"a={_FILE}", f"b={_FILE}"]},
     "vcf/impute": {"input": _FILE, "ref": _DATA},
+    "vcf/regulatory": {"ref": _DATA},
     "panel/audit": {"research_panel": True},
     "panel/bed": {"genes": ["BRCA1"]},
     "qc/vcf": {"input": _FILE},
@@ -33,6 +38,7 @@ _BASE_REQUESTS: dict[str, dict[str, Any]] = {
     "ref/library-list": {"ref": _DATA},
     "ref/acmg-data": {"ref": _DATA},
     "ref/imputation": {"ref": _DATA},
+    "ref/regulatory": {"ref": _DATA},
     "ref/ybrowse": {"ref": _DATA},
     "report": {"input": _FILE},
     "sample/show": {"input": _FILE},
@@ -54,6 +60,8 @@ _COMPANIONS: dict[tuple[str, str], dict[str, Any]] = {
         "phase_blocks": _DATA + r"\phased.blocks.tsv",
     },
     ("vcf/impute", "vcf_input"): {"input": None, "vcf_input": _FILE},
+    ("panel/audit", "target_cnv"): _PANEL_CNV_PATHS,
+    ("panel/audit", "target_cnv_manifest"): _PANEL_CNV_PATHS,
     ("ref/recheck", "save_answers"): {"online": True},
 }
 
@@ -116,7 +124,7 @@ _ALIGN_REQUESTS = {
 _VCF_FILE_OPS = (
     "annotate", "filter", "table", "to-fasta", "trio", "clinvar", "revel",
     "phylop", "cadd", "gerp", "gnomad", "spliceai", "alphamissense", "pharmgkb",
-    "pharmcat", "chain-annotate",
+    "pharmcat", "regulatory", "chain-annotate",
 )  # fmt: skip
 _VCF_PATHS = [
     (f"vcf/{name}", item)

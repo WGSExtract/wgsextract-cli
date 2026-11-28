@@ -128,6 +128,8 @@ def test_num_partitions_is_used_only_when_deepvariant_has_it(
     call(dv)
     probes = [r for r in dv.docker.runs() if r["command"] == ["--helpfull"]]
     assert len(probes) == (helpfull is not None)
+    # contract: the separate capability probe is isolated like the compute stages.
+    assert all(p["network"] == "--network=none" for p in probes)
     if partitions:
         assert postprocess(dv)[1] is not None
         return

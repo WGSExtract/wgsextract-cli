@@ -50,9 +50,9 @@ from wgsextract_cli.core.utils import (
 )
 from wgsextract_cli.core.variant_files import (
     calculate_bam_md5,
-    ensure_vcf_indexed,
     verify_paths_exist,
 )
+from wgsextract_cli.core.vcf_output import publish_called_vcf
 
 from .basic import plain_reference, record_variants, setup_caller
 
@@ -279,8 +279,7 @@ def _extract_region_bam_with_reference_header(
 
 
 def _write_indexed_vcf_from_bcf(out_bcf: str, out_vcf: str) -> None:
-    run_command(["bcftools", "view", "-Oz", "-o", out_vcf, out_bcf])
-    ensure_vcf_indexed(out_vcf)
+    publish_called_vcf(out_vcf, stages=(["bcftools", "view", "-Ov", out_bcf],))
     for path in (out_bcf, out_bcf + ".csi"):
         if Path(path).exists():
             Path(path).unlink()
@@ -294,7 +293,7 @@ def _record_calls(out_vcf: str, role: str, ref: str, region: str | None) -> None
 
 def run_cnv(params: VcfCnvParams) -> None:
     """``vcf cnv``: delly cnv into ``cnv.vcf.gz``."""
-    verify_dependencies(["delly", "bcftools", "tabix", "samtools"])
+    verify_dependencies(["delly", "bcftools", "bgzip", "tabix", "samtools"])
     setup = setup_caller(
         params, allow_reference_subset=True, resolve_regions=_calling_intervals
     )
@@ -336,8 +335,8 @@ def _tandem_repeats(params: VcfSvParams) -> str | None:
 def run_sv_pbsv(params: VcfSvParams) -> None:
     """``vcf sv`` with pbsv into ``pbsv.vcf.gz``."""
     validate_pbsv_region(params.region)
-    verify_dependencies(["pbsv", "bcftools", "tabix", "samtools"])
-    log_dependency_info(["pbsv", "bcftools", "tabix", "samtools"])
+    verify_dependencies(["pbsv", "bgzip", "tabix", "samtools"])
+    log_dependency_info(["pbsv", "bgzip", "tabix", "samtools"])
     setup = setup_caller(params)
     threads, outdir, ref = setup.threads, setup.outdir, setup.ref
 
@@ -390,15 +389,14 @@ def run_sv_pbsv(params: VcfSvParams) -> None:
             raise WGSExtractError(
                 f"PacBio SV calling failed with exit code {e.returncode}"
             ) from e
-        run_command(["bcftools", "view", "-Oz", "-o", out_vcf, raw_vcf])
-    ensure_vcf_indexed(out_vcf)
+        publish_called_vcf(out_vcf, source=raw_vcf)
     _record_calls(out_vcf, "structural_variants", ref, region)
 
 
 def run_sv_sniffles(params: VcfSvParams) -> None:
     """``vcf sv`` with Sniffles into ``sniffles.vcf.gz``."""
-    verify_dependencies(["sniffles", "bcftools", "tabix", "samtools"])
-    log_dependency_info(["sniffles", "bcftools", "tabix", "samtools"])
+    verify_dependencies(["sniffles", "bgzip", "tabix", "samtools"])
+    log_dependency_info(["sniffles", "bgzip", "tabix", "samtools"])
     setup = setup_caller(params, resolve_regions=_calling_intervals)
     threads, outdir, ref = setup.threads, setup.outdir, setup.ref
 
@@ -436,8 +434,7 @@ def run_sv_sniffles(params: VcfSvParams) -> None:
             raise WGSExtractError(
                 f"Sniffles SV calling failed with exit code {e.returncode}"
             ) from e
-        run_command(["bcftools", "view", "-Oz", "-o", out_vcf, raw_vcf])
-    ensure_vcf_indexed(out_vcf)
+        publish_called_vcf(out_vcf, source=raw_vcf)
     _record_calls(out_vcf, "structural_variants", ref, region)
 
 
@@ -553,7 +550,7 @@ def run_sv(params: VcfSvParams) -> None:
         run_sv_sniffles(params)
         return
 
-    verify_dependencies(["delly", "bcftools", "tabix", "samtools"])
+    verify_dependencies(["delly", "bcftools", "bgzip", "tabix", "samtools"])
     setup = setup_caller(
         params, allow_reference_subset=True, resolve_regions=_calling_intervals
     )

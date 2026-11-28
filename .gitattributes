@@ -25,6 +25,7 @@ native/clair3/patches/*.patch -text -whitespace
 
 # Bundled catalogs are pinned by SHA-256 (provenance.json).
 src/wgsextract_cli/commands/genotyping/str_catalog/* text eol=lf
+src/wgsextract_cli/assets/methylation/hg38-imprinted-dmrs-v1.bed text eol=lf
 
 # Fully generated outputs of scripts/regen.py use LF.
 # Local merges keep one side; ALWAYS run just regen-resolve after merging.

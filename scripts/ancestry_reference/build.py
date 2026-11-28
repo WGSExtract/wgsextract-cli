@@ -19,11 +19,13 @@ Steps:
 - ``train``: ADAMIXTURE at each K (default 7 and 12) on the training samples,
   and on training + held-out samples (the "full" fit validation compares
   against).
-- ``package``: the reference file: sites on GRCh38, GRCh37 and T2T-CHM13
+- ``package --config FILE``: the reference file: sites on GRCh38, GRCh37 and T2T-CHM13
   (lifted over with Hail, alleles checked against each FASTA), P quantised to
   uint16 per K, component labels and the reference populations' mean
   proportions, and a PCA of the training samples for later scoring (#617).
   Prints its SHA-256 for src/wgsextract_cli/core/ancestry_reference.py.
+  Supply the local FASTA paths in the configuration file's
+  ``[ancestry_reference.fasta]`` table (keys ``GRCh38``, ``GRCh37``, ``CHM13``).
 
 The data are gnomAD v3.1 HGDP+1KG (Koenig et al. 2024, Genome Research),
 released by gnomAD without access restrictions under CC0 1.0.
@@ -45,6 +47,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
+import tomllib
 
 BUCKET = "gcp-public-data--gnomad"
 ROOT = "release/3.1/secondary_analyses/hgdp_1kg/"
@@ -242,6 +245,27 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def reference_fastas(config: Path) -> dict[str, str]:
+    with config.open("rb") as stream:
+        settings = tomllib.load(stream).get("ancestry_reference", {})
+    entries = settings.get("fasta") if isinstance(settings, dict) else None
+    fastas = {}
+    for build in ("GRCh38", "GRCh37", "CHM13"):
+        value = entries.get(build) if isinstance(entries, dict) else None
+        if not isinstance(value, str) or not value:
+            raise ValueError(f"{config}: set {build} in [ancestry_reference.fasta]")
+        path = config.parent / Path(value).expanduser()
+        if not path.is_file():
+            raise ValueError(f"{config}: {build} FASTA not found: {path}")
+        if not Path(f"{path}.fai").is_file():
+            raise ValueError(
+                f"{config}: {build} FASTA index not found beside {path}; "
+                "index the FASTA with samtools faidx"
+            )
+        fastas[build] = str(path)
+    return fastas
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument(
@@ -251,6 +275,7 @@ def main() -> None:
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--k", type=int, nargs="+", default=[7, 12])
     parser.add_argument("--sets", nargs="+", default=["train", "all"])
+    parser.add_argument("--config", type=Path, help="Local FASTA config for package")
     args = parser.parse_args()
     if args.step == "fetch":
         fetch(args.work)
@@ -261,9 +286,17 @@ def main() -> None:
     elif args.step == "train":
         train(args.work, args.k, args.threads, args.sets)
     else:
+        if args.config is None:
+            parser.error(
+                "package requires --config with an [ancestry_reference.fasta] table"
+            )
+        try:
+            fastas = reference_fastas(args.config)
+        except (OSError, ValueError) as error:
+            parser.error(str(error))
         from package import package
 
-        package(args.work, args.k)
+        package(args.work, args.k, fastas)
 
 
 if __name__ == "__main__":

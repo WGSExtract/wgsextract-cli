@@ -6,6 +6,8 @@ import type { JobServerAddress } from "./job-server-client.js";
 import { bundleEnvironment } from "./paths.js";
 import { isPlatformScriptReference, resolvePlatformScriptPath } from "./platform-scripts.js";
 import { localJobServerURL } from "./local-job-server-url.js";
+import type { NetworkMode } from "../../../shared/network-settings.js";
+import { cliNetworkArguments, isWgsExtractCli } from "./cli-network-policy.js";
 
 const defaultStartupTimeoutSeconds = 60;
 
@@ -14,6 +16,8 @@ export interface JobServer {
     address: () => Promise<JobServerAddress | undefined>;
     /** Stops the server; the next `address()` starts a new one. */
     stop: (onlyAddress?: JobServerAddress) => void;
+    /** The current desktop mode for a new WGS Extract job, independent of the listener's lifetime. */
+    networkMode?: () => Promise<NetworkMode>;
 }
 
 /**
@@ -21,7 +25,8 @@ export interface JobServer {
  * reloads terminate it with every other process. A server that exits is started again
  * on next use.
  */
-export function createJobServer(spec: JobServerSpec, bundleRoot: string, runProcess: RunProcess): JobServer {
+export function createJobServer(spec: JobServerSpec, bundleRoot: string, runProcess: RunProcess, readMode?: () => Promise<NetworkMode>): JobServer {
+    const networkMode = isWgsExtractCli(spec.command.executable, spec.command.arguments) ? readMode : undefined;
     let starting: Promise<JobServerAddress | undefined> | undefined;
     let stopper: AbortController | undefined;
     let currentAddress: JobServerAddress | undefined;
@@ -78,7 +83,10 @@ export function createJobServer(spec: JobServerSpec, bundleRoot: string, runProc
                     }
                 }
             };
-            runProcess(executable, rendered.arguments ?? [], {
+            const args = rendered.arguments ?? [];
+            // The listener never transfers data. Its floor must allow all modes so
+            // new jobs can tighten or relax their own policy without restarting it.
+            runProcess(executable, networkMode ? cliNetworkArguments(args, "full") : args, {
                 cwd: bundleRoot,
                 env: { ...process.env, ...bundleEnvironment(bundleRoot) },
                 signal: controller.signal,
@@ -98,6 +106,7 @@ export function createJobServer(spec: JobServerSpec, bundleRoot: string, runProc
     }
 
     return {
+        ...(networkMode ? { networkMode } : {}),
         address: () => {
             starting ??= start();
             return starting;

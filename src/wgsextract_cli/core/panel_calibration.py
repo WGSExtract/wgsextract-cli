@@ -7,11 +7,17 @@ from bisect import bisect_left, bisect_right
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from decimal import Context, Decimal, localcontext
+from fractions import Fraction
+from itertools import combinations, product
+from math import comb, isfinite, sqrt
 from statistics import fmean, pstdev
-from typing import Any
+from typing import Any, cast
 
 from wgsextract_cli.core import exon_callability as ec
 from wgsextract_cli.core.lookup.identifiers import contig_key
+from wgsextract_cli.core.panel_cnv import MATCH_ON
+from wgsextract_cli.core.panel_weights import STATISTIC, UNITS
 from wgsextract_cli.core.reference_evidence import ReferenceEvidence, Span, State
 from wgsextract_cli.core.sex_inference import nonpar_bounds
 from wgsextract_cli.core.variant_confidence import Thresholds
@@ -22,6 +28,7 @@ _CALLABLE = {State.CALLABLE_REFERENCE, State.VARIANT}
 _GRCH38_X_LENGTH = 156_040_895
 _MAX_LENGTH_IMBALANCE = 0.20
 EXPECTED_BINS = 4
+_EXACT_PERMUTATIONS = 100_000
 NOTE = (
     "Compares this panel's filtered coding variant load with coding-length-matched "
     "genes in the same genome. Not evidence for disease association."
@@ -42,6 +49,12 @@ class Opportunity:
         return contig_key(chrom) == self.chrom and any(
             low <= start <= end <= high for low, high in self.segments
         )
+
+
+@dataclass(frozen=True)
+class CnvMatch:
+    strata: Mapping[str, tuple[int, int, str]]
+    components: Mapping[str, tuple[Fraction, Fraction]]
 
 
 def _merge(intervals: Iterable[Interval]) -> tuple[Interval, ...]:
@@ -181,6 +194,65 @@ def _near_range(value: float, bounds: tuple[float, float]) -> bool:
     return bounds[0] - delta <= value <= bounds[1] + delta
 
 
+def _permutation_tail(
+    strata: Sequence[tuple[list[Fraction], int]],
+    observed: int | Fraction,
+    null_sets: int,
+    seed: int,
+) -> dict[str, Any]:
+    assignments = 1
+    for scores, size in strata:
+        assignments *= comb(len(scores), size)
+        if assignments > _EXACT_PERMUTATIONS:
+            break
+    if assignments <= _EXACT_PERMUTATIONS:
+        totals = [
+            [sum(selected, Fraction()) for selected in combinations(scores, size)]
+            for scores, size in strata
+        ]
+        extreme = sum(sum(draw) >= observed for draw in product(*totals))
+        return {
+            "upper_tail_p": extreme / assignments,
+            "p_method": "exact_stratified_label_permutation",
+            "p_permutations": assignments,
+        }
+    rng = random.Random(seed)
+    extreme = sum(
+        sum(sum(rng.sample(scores, size)) for scores, size in strata) >= observed
+        for _ in range(null_sets)
+    )
+    p = (1 + extreme) / (1 + null_sets)
+    return {
+        "upper_tail_p": p,
+        "p_method": "monte_carlo_stratified_label_permutation",
+        "p_permutations": null_sets,
+        "p_monte_carlo_se": sqrt(p * (1 - p) / (1 + null_sets)),
+    }
+
+
+def _control_moments(
+    pools: Sequence[tuple[list[str], int]], scores: Mapping[str, Fraction]
+) -> tuple[Fraction, Fraction, Fraction]:
+    mean = variance = contributing_genes = zero = Fraction()
+    for pool, size in pools:
+        n = len(pool)
+        values = [scores[gene] for gene in pool]
+        center = sum(values, zero) / n
+        mean += size * center
+        contributing_genes += Fraction(size * sum(bool(value) for value in values), n)
+        # Finite-population correction for each sample without replacement.
+        variance += Fraction(size * (n - size), n - 1) * (
+            sum((score**2 for score in values), zero) / n - center**2
+        )
+    return mean, variance, contributing_genes
+
+
+def _sqrt_fraction(value: Fraction) -> float:
+    # Keep tiny squared weights out of the float range until after the root.
+    with localcontext(Context(prec=32)):
+        return float((Decimal(value.numerator) / Decimal(value.denominator)).sqrt())
+
+
 def matched_null(
     targets: Sequence[str],
     panel_genes: set[str],
@@ -193,6 +265,9 @@ def matched_null(
     basis: str,
     expected_syn: Mapping[str, float] | None = None,
     match_expected: bool = True,
+    weighted_scores: Mapping[str, Fraction] | None = None,
+    clinvar_vetoes: Mapping[str, int] | None = None,
+    cnv: CnvMatch | None = None,
 ) -> dict[str, Any]:
     """Sample an equal number of genes in each target bin without replacement.
 
@@ -200,12 +275,19 @@ def matched_null(
     independent, and contains none of the panel's genes (from any group).
     """
     control: dict[str, list[tuple[int, str]]] = defaultdict(list)
+    target_set = set(targets) if cnv is not None else set()
+    strata_design: dict[str, list[tuple[int, str]]] = defaultdict(list)
     for gene, opportunity in opportunities.items():
+        entry = (opportunity.matched_bp, gene)
         if gene not in panel_genes:
-            control[opportunity.chrom_class].append((opportunity.matched_bp, gene))
+            control[opportunity.chrom_class].append(entry)
+        if cnv is not None and (gene not in panel_genes or gene in target_set):
+            strata_design[opportunity.chrom_class].append(entry)
     cds_bins: dict[tuple[str, int], list[str]] = defaultdict(list)
     limits: dict[str, list[int]] = {}
-    for chrom_class, genes in control.items():
+    for genes in control.values():
+        genes.sort()
+    for chrom_class, genes in (strata_design if cnv is not None else control).items():
         genes.sort()
         cuts = sorted({genes[len(genes) * n // bins][0] for n in range(1, bins)})
         limits[chrom_class] = cuts
@@ -222,27 +304,35 @@ def matched_null(
                 }
             )
 
-    def stratum(key: tuple[str, int], gene: str) -> tuple[str, int, int]:
+    Stratum = tuple[str, int, int] | tuple[str, int, int, int, int, str]
+
+    def stratum(key: tuple[str, int], gene: str) -> Stratum:
         sub_bin = (
             bisect_right(syn_limits.get(key, ()), expected_syn[gene])
             if expected_syn is not None and match_expected
             else 0
         )
-        return key[0], key[1], sub_bin
+        base = (key[0], key[1], sub_bin)
+        return (*base, *cnv.strata[gene]) if cnv is not None else base
 
-    target_bins: Counter[tuple[str, int, int]] = Counter()
-    control_bins: dict[tuple[str, int, int], list[str]] = defaultdict(list)
+    targets_by_bin: dict[Stratum, list[str]] = defaultdict(list)
+    control_bins: dict[Stratum, list[str]] = defaultdict(list)
     for key, genes_in_bin in cds_bins.items():
         for gene in genes_in_bin:
-            control_bins[stratum(key, gene)].append(gene)
+            if gene not in target_set:
+                control_bins[stratum(key, gene)].append(gene)
     joint_ranges = {}
-    if expected_syn is not None and match_expected:
+    if (expected_syn is not None and match_expected) or cnv is not None:
         for bin_key, pool_genes in control_bins.items():
             lengths = [opportunities[gene].matched_bp for gene in pool_genes]
-            expectations = [expected_syn[gene] for gene in pool_genes]
+            expectations = (
+                [expected_syn[gene] for gene in pool_genes]
+                if expected_syn is not None and match_expected
+                else []
+            )
             joint_ranges[bin_key] = (
                 (min(lengths), max(lengths)),
-                (min(expectations), max(expectations)),
+                (min(expectations), max(expectations)) if expectations else None,
             )
     outside = []
     outside_syn = []
@@ -253,25 +343,31 @@ def matched_null(
         bin_ = bisect_right(limits.get(chrom_class, ()), opportunity.matched_bp)
         key = (chrom_class, bin_)
         bin_key = stratum(key, gene)
-        target_bins[bin_key] += 1
+        targets_by_bin[bin_key].append(gene)
         eligible = control.get(chrom_class, ())
         if eligible and not (
             eligible[0][0] <= opportunity.matched_bp <= eligible[-1][0]
         ):
             outside.append(gene)
-        if expected_syn is not None and bin_key in joint_ranges:
+        if bin_key in joint_ranges:
             length_range, syn_range = joint_ranges[bin_key]
             if not _near_range(opportunity.matched_bp, length_range):
                 outside_joint_cds.append(gene)
-            if not _near_range(expected_syn[gene], syn_range):
+            if (
+                expected_syn is not None
+                and syn_range
+                and not _near_range(expected_syn[gene], syn_range)
+            ):
                 outside_syn.append(gene)
     counts = [allele_counts.get(gene, 0) for gene in targets]
-    observed = sum(counts)
+    observed_copies = sum(counts)
+    observed: int | Fraction = observed_copies
+    zero = Fraction()
     observed_bp = sum(opportunities[gene].matched_bp for gene in targets)
     document: dict[str, Any] = {
         "basis": basis,
         "note": NOTE,
-        "observed_allele_copies": observed,
+        "observed_allele_copies": observed_copies,
         "observed_qualifying_genes": sum(bool(count) for count in counts),
         "observed_matched_bp": observed_bp,
         "target_genes": len(targets),
@@ -288,19 +384,53 @@ def matched_null(
                     if expected_syn is not None and match_expected
                     else {}
                 ),
-                "target_genes": count,
+                **(
+                    dict(zip(MATCH_ON, key[3:], strict=True)) if cnv is not None else {}
+                ),
+                "target_genes": len(genes),
                 "control_genes": len(control_bins[key]),
             }
-            for key, count in sorted(target_bins.items())
+            for key, genes in sorted(targets_by_bin.items())
         ],
     }
+    if weighted_scores is not None:
+        observed = sum((weighted_scores.get(gene, zero) for gene in targets), zero)
+        document.update(
+            statistic=STATISTIC,
+            units=UNITS,
+            observed_weighted_allele_copies=float(observed),
+        )
+    if cnv is not None:
+        deletion = sum((cnv.components[gene][0] for gene in targets), zero)
+        duplication = sum((cnv.components[gene][1] for gene in targets), zero)
+        observed += deletion + duplication
+        document.pop("observed_weighted_allele_copies", None)
+        document.update(
+            statistic="combined_burden",
+            units="weighted small-variant allele copies and CNV events",
+            note="Same-sample matched burden; research only. Assays are not independent.",
+            observed_combined_burden=float(observed),
+            observed_small_variant_burden=float(observed - deletion - duplication),
+            observed_deletion_burden=float(deletion),
+            observed_duplication_burden=float(duplication),
+        )
+    if clinvar_vetoes is not None:
+        document["clinvar_benign_exclusions"] = {
+            "target_alleles": sum(clinvar_vetoes.get(gene, 0) for gene in targets),
+            "control_pool_alleles": sum(
+                count
+                for gene, count in clinvar_vetoes.items()
+                if gene in opportunities and gene not in panel_genes
+            ),
+        }
     observed_syn = (
         None if expected_syn is None else sum(expected_syn[g] for g in targets)
     )
     if observed_syn is not None:
         document["observed_expected_syn"] = observed_syn
     if not targets or any(
-        count > len(control_bins[key]) for key, count in target_bins.items()
+        len(genes) + int(cnv is not None) > len(control_bins[key])
+        for key, genes in targets_by_bin.items()
     ):
         return {
             **document,
@@ -330,7 +460,8 @@ def matched_null(
             "reason": "outside_joint_cds_range",
             "unmatched_targets": sorted(outside_joint_cds),
         }
-    pools = [(control_bins[key], size) for key, size in sorted(target_bins.items())]
+    ordered_targets = sorted(targets_by_bin.items())
+    pools = [(control_bins[key], len(genes)) for key, genes in ordered_targets]
     mean_bp = sum(
         size * fmean(opportunities[gene].matched_bp for gene in pool)
         for pool, size in pools
@@ -354,21 +485,108 @@ def matched_null(
                 "expected_control_syn": mean_syn,
             }
     rng = random.Random(seed)
-    draws = []
+    joint_scores = None
+    if cnv is not None:
+        assert weighted_scores is not None
+        joint_scores = {
+            gene: weighted_scores.get(gene, zero) + sum(components, zero)
+            for gene, components in cnv.components.items()
+        }
+    draws: list[int | Fraction] = []
     null_bp = 0
     null_syn = 0.0
+    null_copies = 0
     for _ in range(null_sets):
-        copies = 0
+        score: int | Fraction = 0
         for pool, size in pools:
             for gene in rng.sample(pool, size):
-                copies += allele_counts.get(gene, 0)
+                copies = allele_counts.get(gene, 0)
+                null_copies += copies
+                if joint_scores is not None:
+                    score += joint_scores[gene]
+                else:
+                    score += (
+                        copies
+                        if weighted_scores is None
+                        else weighted_scores.get(gene, 0)
+                    )
                 null_bp += opportunities[gene].matched_bp
                 if expected_syn is not None:
                     null_syn += expected_syn[gene]
-        draws.append(copies)
+        draws.append(score)
     histogram = Counter(draws)
-    mean = fmean(draws)
+    if joint_scores is not None:
+        center, variance, contributing_genes = _control_moments(pools, joint_scores)
+        sparse_null = contributing_genes < 1
+        mean = float(center)
+        sd = _sqrt_fraction(variance)
+        zero_variance = not variance
+        deviation = Fraction(observed) - center
+        z_score = (
+            _sqrt_fraction(deviation**2 / variance) * (-1 if deviation < 0 else 1)
+            if variance
+            else None
+        )
+    else:
+        sparse_null = null_copies < null_sets
+        mean = fmean(draws)
+        center = (
+            cast(Fraction, sum(draws, zero)) / null_sets
+            if weighted_scores is not None
+            else zero
+        )
+        sd = float(
+            pstdev(Fraction(draw) for draw in draws)
+            if weighted_scores is not None
+            else pstdev(cast(list[int], draws))
+        )
+        zero_variance = not sd
+        z_score = (
+            float(observed - center) / sd
+            if weighted_scores is not None and sd
+            else None
+        )
     less = sum(n for copies, n in histogram.items() if copies < observed)
+    binned: Counter[int] = Counter()
+    if weighted_scores is not None:
+        for value, n in histogram.items():
+            binned[value // 1] += n
+    tail: dict[str, Any] = {"upper_tail_p": (1 + null_sets - less) / (null_sets + 1)}
+    if joint_scores is not None:
+        if zero_variance:
+            tail = {"upper_tail_p": None, "p_reason": "zero_control_variance"}
+        else:
+            tail = _permutation_tail(
+                [
+                    (
+                        [joint_scores[gene] for gene in [*control_bins[key], *genes]],
+                        len(genes),
+                    )
+                    for key, genes in ordered_targets
+                ],
+                observed,
+                null_sets,
+                seed,
+            )
+    cnv_means = {}
+    if cnv is not None:
+        deletion, duplication = (
+            sum(
+                (
+                    Fraction(size, len(pool))
+                    * sum((cnv.components[gene][component] for gene in pool), zero)
+                    for pool, size in pools
+                ),
+                zero,
+            )
+            for component in (0, 1)
+        )
+        cnv_means = {
+            "null_mean_small_variant_burden": float(center - deletion - duplication),
+            "null_mean_deletion_burden": float(deletion),
+            "null_mean_duplication_burden": float(duplication),
+            "null_mean_contributing_genes": float(contributing_genes),
+        }
     return {
         **document,
         "state": "calibrated",
@@ -380,9 +598,25 @@ def matched_null(
             if expected_syn is not None
             else {}
         ),
-        "null_sd": pstdev(draws),
-        "null_histogram": dict(sorted(histogram.items())),
-        "upper_tail_p": (1 + null_sets - less) / (null_sets + 1),
+        **cnv_means,
+        "null_sd": sd,
+        "null_histogram": dict(
+            sorted((binned if weighted_scores is not None else histogram).items())
+        ),
+        **(
+            {
+                "null_histogram_bin_width": 1,
+                "null_mean_allele_copies": null_copies / null_sets,
+                "z_score": z_score
+                if z_score is not None and isfinite(z_score)
+                else None,
+            }
+            if weighted_scores is not None
+            else {}
+        ),
+        **tail,
         "percentile": 100 * (less + histogram[observed] / 2) / null_sets,
-        "underpowered": len(targets) < 10 or mean < 1,
+        "underpowered": len(targets) < 10
+        or sparse_null
+        or (weighted_scores is not None and zero_variance),
     }

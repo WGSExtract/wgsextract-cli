@@ -385,6 +385,16 @@ jobs:
             printf '%s\n' "$SHARD_COUNT" > out/shard-count
           fi
           exit "$status"
+      - name: Summarize the ready Ubuntu test budget
+        if: ${{ !cancelled() && inputs.os == 'ubuntu' && github.event_name == 'pull_request' && strategy.job-total == 1 && steps.regular-pytest.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          junit=()
+          if [ -f out/pytest.xml ]; then junit=(--junit out/pytest.xml); fi
+          python -m scripts.ci_test_budget "${junit[@]}" >> "$GITHUB_STEP_SUMMARY" \
+            || echo 'Ubuntu test budget unavailable: unusable JUnit evidence.' >> "$GITHUB_STEP_SUMMARY"
       - name: Share the test files this merge group ran with the main push
         if: inputs.queue-dedupe && github.event_name == 'merge_group' && hashFiles('out/test-cache/queue/passed.json') != ''
         continue-on-error: true
@@ -615,6 +625,15 @@ jobs:
             --gate-decision out/shard-receipt/gate.json \
             --selection "$TEST_SELECTION" --outcome "$(cat out/shard-receipt/outcome)" \
             --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT"
+      - name: Summarize the ready Ubuntu test budget across shards
+        if: ${{ !cancelled() && hashFiles('out/shard-receipt/pytest.xml') != '' }}
+        continue-on-error: true
+        timeout-minutes: 1
+        run: |
+          if [ "$(cat out/shard-receipt/outcome)" = success ]; then
+            python3 -m scripts.ci_test_budget --junit out/shard-receipt/pytest.xml >> "$GITHUB_STEP_SUMMARY" \
+              || echo 'Ubuntu test budget unavailable: unusable JUnit evidence.' >> "$GITHUB_STEP_SUMMARY"
+          fi
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: test-selection-shadow

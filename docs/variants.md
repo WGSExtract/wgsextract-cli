@@ -210,6 +210,9 @@ number of `repairs`.
 
 `vcf sv` defaults to Delly 2 (`delly sr`); `vcf cnv` uses `delly cnv`,
 which needs no mappability map (`--map` is accepted but ignored).
+On macOS, install Delly with `pixi install --locked -e delly`. WGS Extract
+finds it in that environment; Delly still requires htslib 1.24, while the
+macOS builds of bcftools 1.25 require htslib 1.25.
 ONT detection/`--ont` or `--long-read` selects Sniffles; `--pacbio` supports
 pbsv/Sniffles. Explicit `--caller` wins, but Delly with a long-read flag
 or pbsv with ONT is rejected. See [structural variants](ont.md#structural-variants).
@@ -439,7 +442,11 @@ wgsextract typing target-cnv -i sample.cram --ref hs38.fa.gz --bed targets.bed
 
 The `<stem>.target-cnv.tsv` report includes mean read depth, GC fraction,
 the GC-matched baseline depth, and a copy-number class (`0`, `1`, `2`, or
-`3+`). The estimate is twice the target-to-autosomal depth ratio. The
+`3+`). It also reports the caller's exact GC and expected-coverage bin IDs;
+these are assigned before rounding the displayed fraction and depth.
+Use the table and its result manifest together for
+[research panel CNV calibration](panel.md#optional-target-cnv-burden).
+The estimate is twice the target-to-autosomal depth ratio. The
 baseline uses roughly 220 distributed 1 kb windows; reads and bases below
 quality 20, duplicates, secondary and supplementary alignments are
 excluded, and overlapping mates are counted once. BED targets cannot

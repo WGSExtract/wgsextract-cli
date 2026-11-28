@@ -75,7 +75,7 @@ class RefPhylopParams(_Resource):
 @dataclass(frozen=True, kw_only=True)
 class RefGnomadParams(_Resource):
     """Check or download the gnomAD 2.1.1 exome sites VCFs or the gnomAD 4.1
-    frequency and homozygote-count table."""
+    frequency table with ancestry-group maximum FAF95 and homozygote counts."""
 
     COMMAND = "ref gnomad"
 
@@ -84,7 +84,8 @@ class RefGnomadParams(_Resource):
         help=(
             "2.1.1: exome sites VCFs for hg19 and hg38 (hg38 lifted over). "
             "4.1: native hg38 exomes+genomes, with allele frequency, maximum "
-            "ancestry-group frequency and homozygote counts; --threads sets parallel streams."
+            "ancestry-group frequency, maximum ancestry-group FAF95 and homozygote counts; "
+            "--threads sets parallel streams."
         ),
         choices=GNOMAD_RELEASES,
     )
@@ -92,7 +93,7 @@ class RefGnomadParams(_Resource):
     download: bool = param(
         False,
         help="Allow fetching the public sites VCFs for the selected release "
-        "(4.1 streams ~900 GB, hours, to build or rebuild the table).",
+        "(4.1 streams ~900 GB, hours, to build or upgrade the table for FAF95).",
         action="store_true",
         writes=True,
     )

@@ -134,7 +134,7 @@ export interface ManifestResponse {
     usingSystemDefaultLocale?: boolean;
     bundleState?: BundleStateSnapshot | null;
     /** The app-wide Privacy mode setting (settings.json), not a bundle's saved state. */
-    privacyMode?: boolean;
+    networkSettings: import("./network-settings.js").NetworkSettings;
     appVersion?: string;
     workspaceLocation?: WorkspaceLocationInfo;
     workspaceMoveRevision?: string;
@@ -258,7 +258,7 @@ export interface WebUIState {
     webUIFont: string;
     uiMode: UIMode;
     /** Stops the app's automatic network activity: no update check at startup. */
-    privacyMode: boolean;
+    networkSettings: import("./network-settings.js").NetworkSettings;
     bundleRootPath: string;
     usersWorkspacePath: string;
     homePath?: string;

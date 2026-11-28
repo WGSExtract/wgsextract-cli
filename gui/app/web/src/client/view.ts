@@ -7,7 +7,7 @@ import { state } from "./state.js";
 export { renderActionRows, renderActions, renderPrecheckBanner } from "./view/actions.js";
 import { renderActionRows, renderActions } from "./view/actions.js";
 export { renderSetupStatusSection, renderStandardOptionsAccessory } from "./view/settings.js";
-import { renderSetupStatusSection, renderStandardOptionsAccessory } from "./view/settings.js";
+import { renderNetworkSettings, renderSetupStatusSection, renderStandardOptionsAccessory } from "./view/settings.js";
 import { renderSettingFolderMoveDialog, renderWorkspaceLocationSection } from "./view/workspace-location.js";
 export { renderSetupGlobalStatusBar, renderSetupPromptDialog, setupHasNeverRun, setupNeedsAttention, setupPageID, setupPromptMessage, } from "./view/setup.js";
 import { renderUpdateNavigationItem } from "./view/update.js";
@@ -38,7 +38,7 @@ export function renderBundleHeader() {
 }
 /** A red badge, shown while Privacy mode is on, so the user knows the app won't check for updates. */
 function renderPrivacyModeBadge() {
-    if (!state.privacyMode) {
+    if (!state.networkSettings.privacyMode) {
         return "";
     }
     const tooltip = state.labels.privacyModeBadgeTooltip ?? "";
@@ -132,7 +132,7 @@ export function renderPage(page: BundlePage) {
         <h2>${renderIconTitle(page.title, page.iconName, page.textIcon, "📄")}</h2>
         <p>${escapeHTML(page.summary)}</p>
       </header>
-      ${page.id === "settings" ? `${renderSetupStatusSection()}${renderStandardOptionsAccessory()}` : ""}
+      ${page.id === "settings" ? `${renderNetworkSettings()}${renderSetupStatusSection()}${renderStandardOptionsAccessory()}` : ""}
       <div class="sections">
         ${renderSections(page)}
       </div>

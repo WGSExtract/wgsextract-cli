@@ -32,6 +32,7 @@ from wgsextract_cli.core.utils import (
     run_pipeline,
 )
 from wgsextract_cli.core.variant_files import verify_paths_exist
+from wgsextract_cli.core.vcf_output import uppercase_vcf
 from wgsextract_cli.core.warnings import warn_alignment_sort_space
 
 from ._extract_helpers import cleanup_files
@@ -164,8 +165,11 @@ def run(job: PetJob) -> None:
                 [
                     ["bcftools", "mpileup", "--threads", threads, "-Ou", "-f", ref_file]
                     + [out_bam],
-                    ["bcftools", "call", "--threads", threads, "-mv", "-Oz"]
-                    + ["-o", out_vcf],
+                    *uppercase_vcf(
+                        ["bcftools", "call", "--threads", threads, "-mv"],
+                        out_vcf,
+                        threads=threads,
+                    ),
                 ],
                 description="Variant calling",
             )

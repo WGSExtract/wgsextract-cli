@@ -1,6 +1,5 @@
 """Filesystem paths shared by the CLI and its string-based tool boundaries."""
 
-import logging
 import ntpath
 import os
 import sys
@@ -35,6 +34,14 @@ def absolute_path(path: PathInput) -> Path:
     return Path(absolute.anchor, *parts)
 
 
+def same_path(first: PathInput, second: PathInput) -> bool:
+    """Compare filesystem identity, falling back to names for absent paths."""
+    try:
+        return Path(first).samefile(second)
+    except FileNotFoundError:
+        return absolute_path(first) == absolute_path(second)
+
+
 def windows_local_app_dir(app: str, author: str) -> Path | None:
     """%LOCALAPPDATA%\\<author>\\<app> on Windows, where platformdirs puts per-user
     config and data. platformdirs asks the shell for the folder and ignores the
@@ -51,6 +58,8 @@ def expand_path(path: PathInput) -> str:
     try:
         return str(Path(value).expanduser())
     except RuntimeError:
+        import logging
+
         logging.warning(
             "Could not expand home directory in %s; keeping the path unchanged.",
             value,
@@ -63,6 +72,8 @@ def command_is_path(command: str) -> bool:
     try:
         return Path(command).exists()
     except OSError as exc:
+        import logging
+
         logging.debug("Command is not a filesystem path (errno %s).", exc.errno)
         return False
 

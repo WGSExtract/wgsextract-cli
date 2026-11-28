@@ -20,7 +20,6 @@ from wgsextract_cli.core.alignment.cram_staging import (
     needs_cram30,
     stage_cram30,
 )
-from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.config import settings as settings
 from wgsextract_cli.core.containers import (
     docker_info,
@@ -46,9 +45,8 @@ from wgsextract_cli.core.resource_estimates import (
 )
 from wgsextract_cli.core.results import warn
 from wgsextract_cli.core.steps import StepJournal, resume_policy
-from wgsextract_cli.core.temp_directory import move_file
 from wgsextract_cli.core.utils import UsageError, WGSExtractError
-from wgsextract_cli.core.variant_files import ensure_vcf_indexed
+from wgsextract_cli.core.vcf_output import called_vcf_output, publish_called_vcf
 
 from .basic import CallerSetup, record_variants, setup_caller
 from .deepvariant_pipeline.models import (
@@ -341,7 +339,7 @@ def _deepvariant_parabricks(
         )
     require_native_tool("parabricks")
     gvcf = params.reference_evidence == "gvcf"
-    verify_dependencies(["samtools", "tabix", *(["bcftools"] if gvcf else [])])
+    verify_dependencies(["samtools", "bgzip", "tabix", *(["bcftools"] if gvcf else [])])
     verify_parabricks()
     # Refuse a GPU or host that can't run it before any work; each partition
     # fits itself to the GPU's memory again just before it runs.
@@ -401,7 +399,8 @@ def _pbrun_deepvariant(
         )
         options += ["--haploid-contigs", ",".join(contigs)]
     if gvcf is None:
-        call_variants("deepvariant", str(params.input), ref, out_vcf, region, options)
+        with called_vcf_output(out_vcf) as raw:
+            call_variants("deepvariant", str(params.input), ref, raw, region, options)
     else:
         # One run writes both: --out-variants names the gVCF, and pbrun
         # writes the VCF beside it without the .g (X.g.vcf.gz -> X.vcf.gz).
@@ -416,12 +415,7 @@ def _pbrun_deepvariant(
             raise WGSExtractError(
                 "Parabricks DeepVariant didn't write both its VCF and gVCF."
             )
-        with atomic_output(out_vcf) as staged:
-            move_file(variants, staged)
-            if Path(f"{variants}.tbi").is_file():
-                move_file(f"{variants}.tbi", staged + ".tbi")
-            ensure_vcf_indexed(staged)
-    ensure_vcf_indexed(out_vcf)
+        publish_called_vcf(out_vcf, source=str(variants))
     if record:
         record_variants(
             out_vcf,
@@ -547,7 +541,7 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
     if not local_dv and not arm64_image and not gpu_image:
         _verify_docker()
     gvcf = params.reference_evidence == "gvcf"
-    verify_dependencies(["samtools", "tabix", *(["bcftools"] if gvcf else [])])
+    verify_dependencies(["samtools", "bgzip", "tabix", *(["bcftools"] if gvcf else [])])
     caller = caller or setup_caller(params)
     threads, outdir, ref = caller.threads, caller.outdir, caller.ref
     input_file, region = str(params.input), params.region

@@ -350,11 +350,14 @@ def _reclaim_abandoned_shared_lock(lock: Path) -> None:
 
 
 @contextlib.contextmanager
-def shared_file_lock(path: Path, timeout: float = 60) -> Iterator[Path]:
+def shared_file_lock(
+    path: Path, timeout: float = 60, *, follow_symlinks: bool = True
+) -> Iterator[Path]:
     """Hold ``.<name>.lock`` beside the real file behind ``path`` while one
     read-modify-write of it runs, and yield that real path. Every alias of the
-    file takes the same lock, and the desktop app's own saves take it too."""
-    target = Path(path).resolve()
+    file takes the same lock, and the desktop app's own saves take it too.
+    Use ``follow_symlinks=False`` to lock an entry that may itself be removed."""
+    target = path.resolve() if follow_symlinks else path.parent.resolve() / path.name
     target.parent.mkdir(parents=True, exist_ok=True)
     lock = target.with_name(f".{target.name}.lock")
     deadline = time.monotonic() + timeout

@@ -50,13 +50,14 @@ class FixtureGitHub(GitHub):
         self.issues: list[dict[str, Any]] = []
 
     def runs_between(
-        self, start: datetime, end: datetime, *, workflow: str = ""
+        self, start: datetime, end: datetime, *, workflow: str = "", status: str = ""
     ) -> list[dict[str, Any]]:
         return [
             r
             for r in self.runs
             if start <= stamp(r["created_at"]) <= end
             and r["path"].endswith("/" + workflow)
+            and (not status or r["conclusion"] == status)
         ]
 
     def api(self, method: str, path: str, data: dict[str, Any] | None = None) -> Any:
@@ -123,6 +124,7 @@ class FixtureGitHub(GitHub):
         *,
         nightly: bool = False,
         zip_digest: bool = True,
+        extra_members: dict[str, bytes] | None = None,
     ) -> None:
         self.runs.append(
             {
@@ -138,7 +140,14 @@ class FixtureGitHub(GitHub):
                 "head_branch": "main" if nightly else "work",
             }
         )
-        self.artifact(number, created, "tests-ubuntu-all", "pytest.xml", xml.encode())
+        self.artifact(
+            number,
+            created,
+            "tests-ubuntu-all",
+            "pytest.xml",
+            xml.encode(),
+            extra_members=extra_members,
+        )
         if not zip_digest:
             self.artifacts[-1]["digest"] = "sha256:wrong"
 
@@ -151,10 +160,13 @@ class FixtureGitHub(GitHub):
         data: bytes,
         *,
         expired: bool = False,
+        extra_members: dict[str, bytes] | None = None,
     ) -> None:
         raw = io.BytesIO()
         with zipfile.ZipFile(raw, "w", compression=zipfile.ZIP_DEFLATED) as zipped:
             zipped.writestr(member, data)
+            for path, content in (extra_members or {}).items():
+                zipped.writestr(path, content)
         aid = len(self.artifacts) + 1
         self.downloads[aid] = raw.getvalue()
         self.artifacts.append(
@@ -246,6 +258,42 @@ def test_weekly_review_links_cost_and_candidates_to_observed_code_changes(
         ),
     )
     api.run(17, "2026-11-23T00:00:00Z", pytest_xml({"test_flake": "<error/>"}))
+    historical_junit = pytest_xml({"test_other": ""}).replace(
+        "tests.test_fast", "tests.test_historical"
+    )
+    historical_scope = b'{"ran": ["tests/test_historical.py"], "skipped": {}}'
+    api.run(
+        18,
+        "2026-11-21T10:00:00Z",
+        historical_junit,
+        nightly=True,
+        extra_members={"test-scope.json": historical_scope},
+    )
+    api.run(
+        19,
+        "2026-11-22T12:00:00Z",
+        historical_junit,
+        nightly=True,
+        extra_members={"shard-count": b"2", "test-scope.json": historical_scope},
+    )
+    api.run(
+        20,
+        "2026-11-22T14:00:00Z",
+        historical_junit.replace(' time="10"', ""),
+        nightly=True,
+        extra_members={"test-scope.json": historical_scope},
+    )
+    api.run(
+        21,
+        "2026-11-22T16:00:00Z",
+        historical_junit,
+        nightly=True,
+        extra_members={
+            "test-scope.json": (
+                b'{"ran": ["tests/test_historical.py", "tests/test_fast.py"], "skipped": {}}'
+            ),
+        },
+    )
     api.artifact(
         1,
         "2026-11-18T01:06:00Z",
@@ -276,7 +324,11 @@ def test_weekly_review_links_cost_and_candidates_to_observed_code_changes(
     assert "test_removed" not in move and tests["test_removed"]["passes"] == 16
     assert f"/commit/{changed}" in move
     assert "Parametrize" in body and "review removing" in body
-    assert "16 JUnit artifacts" in body and "/actions/runs/90" in body
+    assert "20 JUnit artifacts" in body and "/actions/runs/90" in body
+    budget = next(
+        line for line in body.splitlines() if line.startswith("**Test budget")
+    )
+    assert "/actions/runs/18" in budget and "10/" in budget
 
 
 def test_artifact_discovery_needs_only_recent_history() -> None:

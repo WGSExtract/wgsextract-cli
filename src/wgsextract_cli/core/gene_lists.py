@@ -22,7 +22,7 @@ from typing import Any
 
 from wgsextract_cli.core import resource_releases
 from wgsextract_cli.core.file_lock import build_lock
-from wgsextract_cli.core.network_policy import DownloadRequired
+from wgsextract_cli.core.network_policy import DownloadRequired, NetworkRestricted
 from wgsextract_cli.core.ref_library.assets import resolve_reference_library
 from wgsextract_cli.core.ref_library.downloads import download_file
 from wgsextract_cli.core.report_documents import ReportGeneListDocument
@@ -166,7 +166,7 @@ def load(spec: str | Path | None, library: Path | None = None) -> GeneList:
         try:
             path = ensure_builtin(list_id, library)
             genes = _read_tsv(path.read_text(encoding="utf-8"), path)
-        except (GeneListUnavailable, DownloadRequired):
+        except (GeneListUnavailable, DownloadRequired, NetworkRestricted):
             raise
         except (OSError, WGSExtractError) as error:
             raise GeneListUnavailable(
@@ -224,6 +224,8 @@ def ensure_builtin(list_id: str, library: Path | None = None) -> Path:
                 expected_sha256=meta["sha256"],
                 resolve_release_digest=False,
             )
+        except NetworkRestricted:
+            raise
         except (OSError, WGSExtractError) as error:
             ok = False
             logging.debug("Gene list download failed: %s", error)

@@ -18,6 +18,7 @@ from wgsextract_cli.core.sample_ploidy import ploidy_args, sex_samples_args
 from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import WGSExtractError, run_pipeline
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed, get_chr_name
+from wgsextract_cli.core.vcf_output import uppercase_vcf
 
 from ._extract_helpers import BaseArgs, cleanup_files, derive_output_path
 
@@ -199,7 +200,7 @@ def _call_haploid(
             [
                 ["bcftools", "mpileup", "-Ou", "-f", ref, "-r", ",".join(contigs)]
                 + ["--threads", base.threads, input_path],
-                ["bcftools", "call", "--ploidy", "1", "-mv", "-Oz", "-o", staged],
+                *uppercase_vcf(["bcftools", "call", "--ploidy", "1", "-mv"], staged),
             ],
             description="Variant calling",
         )

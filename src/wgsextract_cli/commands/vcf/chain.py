@@ -10,6 +10,7 @@ from typing import Literal
 
 from wgsextract_cli import __version__
 from wgsextract_cli.api.vcf import VcfChainAnnotateParams, VcfTableParams
+from wgsextract_cli.core import regulatory_data, regulatory_overlap
 from wgsextract_cli.core._confidence_rules import thresholds_from
 from wgsextract_cli.core.artifacts import ChildRun, ended_as, lineage_args
 from wgsextract_cli.core.atomic_output import atomic_output
@@ -17,7 +18,7 @@ from wgsextract_cli.core.config import config_args
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.output_checks import vcf_record_count
-from wgsextract_cli.core.paths import absolute_path
+from wgsextract_cli.core.paths import absolute_path, same_path
 from wgsextract_cli.core.ref_library.assets import input_stem
 from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.results import (
@@ -44,6 +45,7 @@ from .chain_scope import ChainScope, resolve_scope, select_records, vcf_indexes
 from .clinvar_revel import CLINVAR_ANNOTATED, REVEL_ANNOTATED
 from .deleteriousness import CADD_ANNOTATED, GERP_ANNOTATED
 from .population import GNOMAD_ANNOTATED, PHYLOP_ANNOTATED
+from .regulatory import REGULATORY_ANNOTATED
 from .splicing import ALPHAMISSENSE_ANNOTATED, PHARMGKB_ANNOTATED, SPLICEAI_ANNOTATED
 from .table import run_table
 
@@ -60,6 +62,7 @@ _VCF_STEPS = {
     "spliceai": ("spliceai_vcf", SPLICEAI_ANNOTATED),
     "alphamissense": ("alphamissense_vcf", ALPHAMISSENSE_ANNOTATED),
     "pharmgkb": ("pharmgkb_vcf", PHARMGKB_ANNOTATED),
+    "regulatory": ("regulatory_file", REGULATORY_ANNOTATED),
 }
 
 
@@ -109,6 +112,8 @@ def dataset(ann: str, lib: ReferenceLibrary) -> str | None:
 
 
 def _step_resource_args(ann: str, lib: ReferenceLibrary) -> list[str]:
+    if ann == "regulatory":
+        return []
     if ann == "vep":
         assert lib.vep_cache is not None
         # Pin the same offline engine and cache the journal tracks: standalone
@@ -137,6 +142,8 @@ def skip_reason(ann: str, lib: ReferenceLibrary) -> str | None:
     if not get_tool_path(tool):
         return f"{tool} is not installed."
     if not dataset(ann, lib):
+        if ann == "regulatory":
+            return regulatory_data.missing(regulatory_data.path(lib.root))
         return (
             "required reference data not found. "
             f"Run 'wgsextract ref {ann}' to download."
@@ -184,6 +191,16 @@ def _annotation_step(
         inputs["indel_data"] = lib.cadd_indel_file
     settings: dict[str, object] = {"wgsextract": __version__}
     tools = ["bcftools", "bgzip", "tabix"]
+    if ann == "regulatory":
+        table = regulatory_data.path(lib.root)
+        if not (source_data := regulatory_data.provenance(table, verify=True)):
+            raise WGSExtractError(regulatory_data.missing(table))
+        inputs.update(
+            data=str(table),
+            index=str(regulatory_data.index(table)),
+            provenance=str(regulatory_data.marker(table)),
+        )
+        settings["regulatory_source"] = source_data
     if ann == "clinvar":
         settings["confidence"] = asdict(thresholds_from())
     if ann == "vep":
@@ -254,7 +271,7 @@ def _run_annotation(
     if journal.dry_run:
         return
     if decision.run:
-        if absolute_path(output) == absolute_path(source):
+        if same_path(output, source):
             raise UsageError(f"Annotation step '{ann}' would overwrite its input.")
         with journal.running(decision) as handle:
             Path(output).parent.mkdir(parents=True, exist_ok=True)
@@ -267,6 +284,8 @@ def _run_annotation(
                 _invoke_annotation(
                     [*args, "--result-file", str(result_file)], ann, label, output
                 )
+                if ann == "regulatory":
+                    _check_regulatory_generation(result_file, step)
             except BaseException as error:
                 _record_step_run(ann, result_file, decision.reason, ended_as(error))
                 raise
@@ -281,6 +300,18 @@ def _run_annotation(
             ann, decision.metrics, decision.reason, "reused"
         )
     _forward_step_warnings(label, ann, str(Path(output).parent))
+
+
+def _check_regulatory_generation(result_file: Path, step: Step) -> None:
+    try:
+        result = json.loads(result_file.read_text(encoding="utf-8"))
+        actual = result["details"]["regulatory_source"]
+    except (OSError, ValueError, KeyError, TypeError):
+        actual = None
+    if actual != step.params["regulatory_source"]:
+        raise WGSExtractError(
+            "SCREEN track changed during this chain. Rerun the chain."
+        )
 
 
 def _scope_step(
@@ -311,7 +342,7 @@ def _scope_step(
     )  # fmt: skip
     decision = journal.decide(step)
     if decision.run and not journal.dry_run:
-        if absolute_path(output) == absolute_path(source):
+        if same_path(output, source):
             raise UsageError("Region selection would overwrite its input.")
         with journal.running(decision) as handle:
             outdir.mkdir(parents=True, exist_ok=True)
@@ -328,7 +359,7 @@ def _scope_step(
 
 
 def _requires_contig_context(ann: str, lib: ReferenceLibrary) -> bool:
-    if not lib.fasta or ann in {"gerp", "vep"}:
+    if not lib.fasta or ann in {"gerp", "regulatory", "vep"}:
         return False
     resource = dataset(ann, lib)
     return not (
@@ -349,13 +380,6 @@ def _work_dir(path: Path, protected: list[Path], cleanup: list[Path]) -> Path:
     return path
 
 
-def _same_path(output: Path, source: str | Path) -> bool:
-    path = absolute_path(source)
-    return output == path or (
-        output.exists() and path.exists() and output.samefile(path)
-    )
-
-
 def _plan_manifest_stem(
     outdir: Path,
     params: VcfChainAnnotateParams,
@@ -370,7 +394,7 @@ def _plan_manifest_stem(
         *vcf_indexes(input_file), *(dataset(ann, lib) for ann in annotations),
         lib.cadd_indel_file if "cadd" in annotations else None,
     )  # fmt: skip
-    if any(path is not None and _same_path(manifest, path) for path in protected):
+    if any(path is not None and same_path(manifest, path) for path in protected):
         raise UsageError(
             "The dry-run manifest would overwrite an input; choose another --outdir."
         )
@@ -391,6 +415,8 @@ def _run_steps(
     ready: list[tuple[int, str]] = []
     for position, ann in enumerate(annotations, start=1):
         if reason := skip_reason(ann, lib):
+            if ann == "regulatory":
+                raise WGSExtractError(reason)
             warn(
                 "annotation_skipped",
                 f"[{position}/{len(annotations)}] Skipping '{ann}': {reason}",
@@ -444,8 +470,9 @@ def _run_steps(
             "--threads",
             str(params.threads) if params.threads is not None else "auto",
         ]
-        if reference:
-            args += ["--ref", str(reference)]
+        step_ref = lib.root if ann == "regulatory" else reference
+        if step_ref:
+            args += ["--ref", str(step_ref)]
         args += _step_resource_args(ann, lib)
         args += lineage_args(current_result().run, ann)
         _run_annotation(
@@ -475,7 +502,7 @@ def run_chain_annotate(
     input_file = require_vcf_input(params)
     outdir = absolute_path(params.outdir or absolute_path(input_file).parent)
     final_out = outdir / "chain_annotated.vcf.gz"
-    if _same_path(final_out, input_file):
+    if same_path(final_out, input_file):
         raise UsageError(
             "vcf chain-annotate would overwrite its input; choose another --outdir."
         )
@@ -488,6 +515,11 @@ def run_chain_annotate(
         else None
     )
     lib = ReferenceLibrary(params.ref, md5_sig, input_path=input_file)
+    if "regulatory" in annotations:
+        regulatory_overlap.require_grch38(input_file)
+        table = regulatory_data.path(lib.root)
+        if not regulatory_data.provenance(table, verify=True):
+            raise WGSExtractError(regulatory_data.missing(table))
     if params.dry_run:
         result.set_manifest_stem(
             _plan_manifest_stem(outdir, params, input_file, lib, annotations)

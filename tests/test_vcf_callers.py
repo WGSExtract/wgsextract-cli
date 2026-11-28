@@ -17,10 +17,13 @@ import pytest
 
 from tests.fake_tools import FakeGatk, require_bare_name_fakes
 from tests.htslib_helpers import (
+    caller_output_names,
     needs_tools,
     require_runnable,
     run_wgsextract,
     snp_sample,
+    soft_mask_reference,
+    vcf_body,
     vcf_calls,
     write_fasta,
 )
@@ -141,6 +144,25 @@ def test_1247_freebayes_region_bed_keeps_grouped_coordinates_and_colons(
 # --- GATK HaplotypeCaller --------------------------------------------------------
 
 
+@pytest.mark.parametrize("caller", ["freebayes", "gatk"])
+def test_1654_native_callers_preserve_records_on_soft_masked_reference(
+    caller, genome, tmp_path
+):
+    require_runnable(caller, "samtools", "bcftools", "bgzip", "tabix")
+    masked = soft_mask_reference(genome.ref, tmp_path / "masked.fa", 900, 1100)
+    bodies = []
+    for label, ref in [("plain", genome.ref), ("masked", masked)]:
+        out = tmp_path / label
+        run_wgsextract(
+            "vcf", caller, "--input", genome.bam, "--ref", ref,
+            "--outdir", str(out), "--threads", "1", "-r", "chr1:900-1100",
+        )  # fmt: skip
+        vcf = out / f"{caller}.vcf.gz"
+        assert vcf_calls(vcf, "chr1:900-1100") == [genome.call]
+        bodies.append(vcf_body(vcf))
+    assert bodies[0] == bodies[1]
+
+
 @needs_tools("gatk", "samtools", "tabix")
 def test_gatk_calls_the_snp_from_a_regional_cram(genome, tmp_path):
     """One real GATK run (slow to start): the CRAM is cut to a temporary BAM,
@@ -160,7 +182,7 @@ def test_gatk_calls_the_snp_from_a_regional_cram(genome, tmp_path):
 
     assert [c[:5] for c in vcf_calls(outdir / "gatk.vcf.gz")] == [genome.call]
     assert (ref_dir / "ref.dict").read_text().startswith("@HD")
-    assert sorted(p.name for p in outdir.iterdir()) == [
+    assert caller_output_names(outdir) == [
         "gatk.vcf.gz",
         "gatk.vcf.gz.tbi",
     ]
@@ -307,6 +329,7 @@ def test_1034_gatk_reads_a_cram_whose_crai_htsjdk_rejects(
 def test_1125_whole_contig_still_requires_a_cram_index(tmp_path, genome):
     from wgsextract_cli.core.artifact_checks import ArtifactIncompatible
 
+    require_runnable("gatk", "samtools")
     cram = tmp_path / "no-index.cram"
     shutil.copyfile(genome.cram, cram)
     with pytest.raises(ArtifactIncompatible, match="index .* is missing"):
@@ -382,7 +405,7 @@ def test_gatk_cuts_a_regional_cram_to_a_bam_it_can_read(genome, gatk, tmp_path, 
     assert result["status"] == "ok", result["error"]
     assert vcf_calls(outdir / "gatk.vcf.gz") == genome.calls
     assert (tmp_path / "ref" / "ref.dict").read_text().startswith("@HD")
-    assert sorted(p.name for p in outdir.iterdir()) == [
+    assert caller_output_names(outdir) == [
         "gatk.vcf.gz",
         "gatk.vcf.gz.tbi",
         "manifests",

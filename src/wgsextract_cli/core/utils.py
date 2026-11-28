@@ -53,6 +53,7 @@ from wgsextract_cli.core.process_registry import (
     wait_with_cancel as wait_with_cancel,
 )
 from wgsextract_cli.core.progress import Heartbeat, Worker, process_cpu_seconds
+from wgsextract_cli.core.ref_library.lookup import restricted_hts_env
 from wgsextract_cli.core.resource_policy import (
     get_resource_defaults as _get_resource_defaults,
 )
@@ -389,7 +390,7 @@ def run_command(
             stdin=stdin,
             text=text_mode,
             errors="replace" if text_mode else None,
-            env=env,
+            env=restricted_hts_env(cmd_list, env),
             cwd=cwd,
             **process_group_kwargs(),
         )
@@ -548,7 +549,7 @@ def popen(
             stdin=stdin,
             text=text,
             errors="replace" if text else None,
-            env=env,
+            env=restricted_hts_env(cmd_list, env),
             cwd=cwd,
             **process_group_kwargs(),
         )

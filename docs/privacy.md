@@ -1,27 +1,50 @@
 # Privacy and network access
 
 > **Scope:** This document covers **WGS Extract CLI** (the command-line
-> back-end, Python API and local server). For the desktop app's privacy model —
-> including automatic update checks, interactive missing-data install prompts,
-> and how the GUI sits atop the strictly offline CLI — see
+> back-end, Python API and local server). For first-launch consent, update
+> checks and interactive download prompts, see
 > [Desktop App Privacy and network access](../gui/docs/privacy.md) and
 > [GUI Architecture — Privacy and network boundary](../gui/devdocs/architecture.md#privacy-and-network-boundary).
 
-Ordinary analysis, inspection and reporting stay on this computer. Defaults
-must not attempt a connection, even when a reference, tree, gene list or
-model is missing. There is no telemetry, usage reporting or background CLI
-update check. The one exception is the desktop app's startup update check,
-which asks GitHub whether a newer release exists and is off in **Privacy
-mode** (below). Missing dependencies are reported, never installed by analysis.
+The CLI is offline by default. Ordinary analysis, inspection and reporting
+do not connect to the internet, even when a reference, tree, gene list or
+model is missing. An outbound request requires an explicit network command
+or an operation-specific opt-in. Permission to download public data is
+separate from permission to send sample-derived information. The CLI has
+no telemetry, usage reporting or background update check, regardless of
+network mode.
+
+Analysis reports missing dependencies without installing them.
 Runtime Pixi invocations use both `--no-install` and `--frozen`: skipping
 installation alone would still allow lockfile resolution and registry queries.
 Incomplete installed runtimes fail with setup guidance, rather than falling back
 to a potentially different CLI on the host's PATH.
 
-Explicit download/install commands may use the network. Other commands need
-`--download` before fetching missing public data. Without permission they
-name the missing data and explain how to confirm the download. Installed,
-verified data is reused offline. `--no-download` overrides a persistent opt-in:
+## CLI network mode
+
+Set `network_mode` in `config.toml`, or override it for one invocation with
+`--network full|low|off`.
+
+| Mode | Outbound behavior |
+| --- | --- |
+| `full` (default) | Existing operation-specific opt-ins apply. Selecting `full` alone does not grant consent. |
+| `low` | Bulk transfers also require `--allow-large-download`. These include reference genomes and bootstrap archives, panels, models, annotation databases, package installs, and remote alignment or annotation streams. Small requests such as catalog size probes, release and checksum lookups, and pinned cytoband tables can still run with their usual opt-ins. |
+| `off` | Refuses outbound operations even with `--download`, `--allow-large-download` or a disclosure opt-in. Installed data, cached metadata and checksum-verified staged downloads can still be reused locally. |
+
+The CLI does not detect metered connections; the desktop app or another caller
+can select the mode. The Python API and server accept `network` and
+`allow_large_download` on operation parameters. A server job can be stricter,
+but cannot relax the mode selected when `serve` starts. This setting governs
+outbound operations, not the server's inbound listener or network access by
+other programs.
+
+## Download and disclosure opt-ins
+
+Explicit download/install commands may use the network. Analysis commands
+that can fetch missing public data ask for `--download` rather than fetching
+silently. Without permission they name the missing data and explain how to
+get it. Installed, verified data is reused offline. Where supported,
+`--no-download` overrides a persistent opt-in:
 
 ```toml
 # config.toml; default is false
@@ -39,19 +62,10 @@ chain needed to build the targets is missing.
 `analyze comprehensive` runs these same guarded subcommands. Provision missing
 data first with the download command named in the error, or explicitly opt in
 through `config.toml` before running the comprehensive workflow.
-The desktop exposes the same default-off setting under Settings → advanced
-settings → **Allow missing public-data downloads**, with the request disclosure
-in its tooltip.
-The desktop app checks GitHub for a newer release when it starts. It is a plain
-request for the public release feed (`latest.json`); it sends no sample
-information, and the update is downloaded only after you choose to. Turn on
-Settings → Standard UI Options → **Privacy mode** to stop it. The setting is
-app-wide (the app's `settings.json`), so loading another bundle does not turn
-it off. A red **PRIVACY** badge under the app's name shows while it is on, and
-**File → Check for Updates…** still checks when asked. A development build
-without an updater key has no feed and never checks.
-Lineage and microarray pages also offer an unchecked per-run download option.
-Fresh-install automation plans select it explicitly; ordinary runs do not.
+The desktop exposes the same default-off **Allow missing public-data
+downloads** setting under **Settings → Users Workspace Settings** in
+Advanced mode. See [how the desktop app uses the CLI](../gui/docs/privacy.md#how-the-desktop-app-and-cli-work-together)
+for per-run choices.
 
 The option is shared by the CLI and typed Python/server parameters. The
 read-only MCP surface refuses download permissions. A server job needs both
@@ -165,7 +179,7 @@ queries. The separate `vep download` command fetches public data only.
 | `ref library --remote-sizes` / desktop **Look up sizes** | Each catalog entry's host, including UCSC, NCBI and EBI | HTTP(S) HEAD or FTP SIZE requests for public reference filenames with missing or at least 30-day-old cached sizes; no sample data |
 | `realign --input https://…` | The URL's host and redirects | Explicitly selected remote alignment/index; HEAD, index download and sample-derived genomic byte ranges. Use a local file to avoid disclosing access patterns. Server clients cannot supply URLs. |
 | `benchmark --dataset real` / `--dataset-url` | Selected public benchmark host | Dataset/index URLs; this explicitly selected dataset mode downloads public test data |
-| Desktop startup update check (off in **Privacy mode**), **Check for Updates…**, then **Download** | Configured GitHub release/update endpoints/CDN | Application version, platform/architecture and asset requests, not sample information |
+| Desktop startup update check (opt-in on fresh installs and paused in **Privacy mode**), **Check for Updates…**, then **Download** | Configured GitHub release/update endpoints/CDN | Application version, platform/architecture and asset requests, not sample information |
 | Desktop **Setup**, reference/dataset download actions | GitHub, Pixi/Conda/PyPI registries and each selected resource publisher | Selected package versions, platform and public dataset identifiers, not sample information |
 | Desktop genome viewer **Connect and view remote file**, after transfer consent | The operator-selected server URL displayed in the viewer | Selected server-side sample/index/reference paths, adjacent FASTA index paths and genomic byte offsets; the backend authenticates with the server token and receives selected genomic/reference bytes |
 
@@ -197,7 +211,7 @@ behavior. Classification describes the baseline, before this change.
 | CRAM decoding by htslib/Java tools | No remote fallback intended | Local-only `REF_PATH` retained; no Java reference-download property; missing references fail |
 | Liftover/chip coordinates | Coordinate conversion is local; missing microarray chains were fetched | **Default-violation** found in review: missing whole-chain downloads now require `microarray --download`; pyliftover receives only local chain files |
 | VEP run/verify, chain-annotate, ClinVar/REVEL/gnomAD/SpliceAI/etc. annotation | Ensembl VEP could fall back to online annotation if its cache directory was missing | Local caches/indexes only; a missing cache now stops `vep run` and names `vep download` |
-| DeepVariant/Clair3/Parabricks containers and native callers | No registry pull | Installed images/models required; every container launch uses `--pull=never`, even if an image disappears after preflight; no runtime dependency installation |
+| DeepVariant/Clair3/Parabricks containers and native callers | No registry pull | Installed images/models required. Local compute containers use `--network=none` and `--pull=never` in every mode; no runtime dependency installation. |
 | `ref download`, genome-library install, bootstrap, annotation resources, gene maps, microarray targets, ancestry/AADR/somalier/imputation/yBrowse/gnomAD-SV install, ACMG data preparation | Yes | Explicit network operations; retain downloads and mirrors |
 | Reference/dataset listing/status/verify/count/delete | No | Local metadata; remote sizes only with the opt-in above |
 | `ref index --aligner bwa-mem2` on hs38DH | Yes if published index absent | **Default-violation** found in independent review: fetching prebuilt indexes now requires `--download`; local index building stays available |
@@ -213,7 +227,7 @@ behavior. Classification describes the baseline, before this change.
 | Dorado `basecall` model names/modifications | Yes | **Default-violation**: require `--download` or a local model directory |
 | Remote realignment input, remote sizes, benchmark real-data selection | Yes | Explicit **opt-in**; request data disclosed above |
 | `serve` HTTP/MCP, desktop local backend/path picker | Loopback only | Explicit local transport, no automatic remote call; stdio MCP opens no listener |
-| Desktop launch | GitHub update check | **Default on, by owner decision**: one request for the public release feed, no sample data; **Privacy mode** turns it off, and tests set `GFC_TAURI_AUTO_UPDATE=0` |
+| Desktop launch | GitHub update check | **Off on a fresh install until you choose OK**; **Privacy mode** pauses it. The request for the public release feed sends no sample data. |
 | Desktop Reference Genomes page rendering | Automatically ran `ref library --list --remote-sizes`, querying catalog hosts when sizes were missing/stale | **Default-violation** found in independent review: the automatic data source now uses cached sizes only; a separate, confirmed **Look up sizes** action opts in |
 | `deps check` / shared optional-tool discovery and version probes | Pixi could resolve a changed manifest | **Default-violation**: frozen lockfile queries/probes, without environment installation |
 | Installed CLI/desktop analysis launchers | Pixi could complete/update environments or resolve a changed manifest | **Default-violation**: always `--no-install --frozen`; Setup remains explicit |

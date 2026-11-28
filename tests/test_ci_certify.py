@@ -44,13 +44,13 @@ def test_1576_remote_host_lock_is_bound_to_controller_pid(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def coordinator(command: list[str], **kwargs: Any) -> None:
-        assert command[:3] == ["agent-coord", "lock", "seraph"]
+        assert command[:3] == ["agent-coord", "lock", "test-host"]
         # contract: stale host locks must die with the controller
         assert "--pid" in command
         assert command[command.index("--pid") + 1] == str(os.getpid())
 
     monkeypatch.setattr(subprocess, "run", coordinator)
-    acquire_host_lock("seraph")
+    acquire_host_lock("test-host")
 
 
 def attestations(

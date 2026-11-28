@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from math import isfinite
 from typing import Any
 
 from wgsextract_cli.core.panel_spec import DISCLAIMER
+from wgsextract_cli.core.panel_weights import STATISTIC
 from wgsextract_cli.core.report_documents import ReportPanelAuditDocument
 
 from .context import (
@@ -45,10 +47,21 @@ def _group_text(group: Mapping[str, Any]) -> str:
         "callable CDS" if calibration.get("basis") == "callable_cds_bp" else "model CDS"
     )
     copy_label = "copy" if copies == 1 else "copies"
+    burden = f"{copies} qualifying allele {copy_label}"
+    if calibration.get("statistic") == STATISTIC:
+        score = calibration.get("observed_weighted_allele_copies")
+        if (
+            isinstance(score, bool)
+            or not isinstance(score, (int, float))
+            or not isfinite(score)
+            or score < 0
+        ):
+            return text
+        burden = f"{score:.6g} weighted ALT copies ({burden})"
     gene_label = "gene" if genes == 1 else "genes"
     limitation = "; underpowered" if calibration.get("underpowered") else ""
     return (
-        f"{text}; same-genome {basis} null for {copies} qualifying allele {copy_label} "
+        f"{text}; same-genome {basis} null for {burden} "
         f"across {genes} eligible {gene_label}: empirical upper-tail p={p:.3g}{limitation}"
     )
 

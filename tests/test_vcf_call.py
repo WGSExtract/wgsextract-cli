@@ -1,5 +1,6 @@
 """``vcf call``: several variant types in one run, optionally merged."""
 
+import gzip
 import json
 import random
 import sys
@@ -152,6 +153,41 @@ def test_gvcf_replaces_the_snp_and_indel_vcfs(tmp_path, small_sample):
         "chr1",
         "chr2",
     }
+
+
+@needs_htslib
+@pytest.mark.parametrize(
+    ("flags", "filename"),
+    [
+        (["--merge"], "variants.vcf.gz"),
+        (["--reference-evidence", "gvcf"], "bcftools.g.vcf.gz"),
+    ],
+)
+def test_1630_and_1654_soft_masked_calls_keep_the_same_records(
+    tmp_path, small_sample, flags, filename
+):
+    bam, fasta = small_sample
+    sequences = {
+        name: seq[:90] + seq[90:170].lower() + seq[170:]
+        for entry in fasta.read_text().split(">")[1:]
+        for name, seq in [entry.splitlines()]
+    }
+    masked = write_fasta(tmp_path / "masked.fa", sequences)
+
+    _call(tmp_path / "plain", small_sample, *flags)
+    _call(tmp_path / "masked", (bam, masked), *flags)
+
+    def records(folder):
+        with gzip.open(tmp_path / folder / filename, "rt") as vcf:
+            return [line.split("\t") for line in vcf if not line.startswith("#")]
+
+    original = records("plain")
+    assert any(
+        len(alt) == len(fields[3]) + 3 and not alt.startswith("<")
+        for fields in original
+        for alt in fields[4].split(",")
+    )
+    assert records("masked") == original
 
 
 @needs_htslib

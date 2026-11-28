@@ -102,7 +102,9 @@ def catalog_file(pgs_id: str, build: str, folder: Path) -> Path:
     refresh = current().allow_downloads is True
     if refresh or not metadata.is_file():
         require_download(f"PGS Catalog metadata for {pgs_id}")
-        _download(f"https://www.pgscatalog.org/rest/score/{pgs_id}/", metadata)
+        _download(
+            f"https://www.pgscatalog.org/rest/score/{pgs_id}/", metadata, large=False
+        )
     try:
         info = json.loads(metadata.read_text(encoding="utf-8"))
         url = info["ftp_harmonized_scoring_files"][build]["positions"]
@@ -120,7 +122,10 @@ def catalog_file(pgs_id: str, build: str, folder: Path) -> Path:
     return path
 
 
-def _download(url: str, path: Path) -> None:
+def _download(url: str, path: Path, *, large: bool = True) -> None:
+    from wgsextract_cli.core.network_policy import require_network
+
+    require_network(path.name, large=large)
     for attempt in range(3):
         checkpoint()
         try:
@@ -653,7 +658,8 @@ class Genotypes:
             ref, alt, gt, filt = rows[0]
             if filt not in (".", "PASS"):
                 return None, "filtered"
-            alleles = [ref, *alt.split(",")]
+            ref = ref.upper()
+            alleles = [ref, *alt.upper().split(",")]
             if not {variant.effect, variant.other}.issubset(alleles):
                 # Explicit reference calls often have ALT='.' or '<NON_REF>'.
                 if not (

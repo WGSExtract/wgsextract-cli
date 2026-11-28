@@ -10,11 +10,13 @@ import shutil
 import signal
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from scripts.ci_certify import host_platform
 from scripts.ci_certify_remote import BOOTSTRAP, REPOSITORY, certify_remote
 from scripts.ci_certify_ssh import CANCEL, PROBE, RESULT, SUPERVISOR, program_line
 
@@ -27,7 +29,10 @@ def remote_pr(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]
         ["git", "init", "-q", "-b", "ci/evil;echo-owned", "repo"], check=True
     )
     monkeypatch.chdir(tmp_path / "repo")
-    Path(".gitignore").write_text("out/\n")
+    Path("config.toml").write_text(
+        '[[certification.hosts]]\nalias = "mac-fixture"\nplatform = "macos-arm64"\n'
+    )
+    Path(".gitignore").write_text("out/\nconfig.toml\n")
     subprocess.run(["git", "add", ".gitignore"], check=True)
     subprocess.run(
         [
@@ -78,6 +83,7 @@ def transport(
     forwarded_environment: str = "",
     transport_does_not_start: bool = False,
     lock_interrupted: bool = False,
+    remote_environment: dict[str, str] | None = None,
 ) -> tuple[list[dict[str, str]], list[str]]:
     popen = subprocess.Popen
     statuses: list[dict[str, str]] = []
@@ -100,7 +106,24 @@ def transport(
                 os.kill(os.getpid(), signal.SIGTERM)
             if cancel_interrupted and "stderr" not in kwargs:
                 raise KeyboardInterrupt
-            probe_platform = "macos-arm64" if alias == "randy-mini" else "windows-x64"
+            if remote_environment is not None and kwargs.get("encoding"):
+                return popen(
+                    [
+                        sys.executable,
+                        "-u",
+                        "-c",
+                        "import sys; exec(sys.stdin.readline())",
+                    ],
+                    *args,
+                    **{**kwargs, "env": {**kwargs["env"], **remote_environment}},
+                )
+            probe_platform = (
+                result_platform
+                if remote_environment is not None
+                else "macos-arm64"
+                if alias == "mac-fixture"
+                else "windows-x64"
+            )
             result = {
                 "sha_before": before_binding
                 if before_binding is not None
@@ -168,9 +191,10 @@ def transport(
 def certify(
     pr: dict[str, Any],
     *,
-    remote: str = "randy-mini",
+    remote: str = "mac-fixture",
     generic: bool = False,
     config: Path = Path("config.toml"),
+    prepared_only: bool = False,
 ) -> None:
     certify_remote(
         REPOSITORY,
@@ -181,6 +205,7 @@ def certify(
             generic_only=generic,
             remote=remote,
             remote_config=config,
+            prepared_only=prepared_only,
             workers=1,
         ),
     )
@@ -194,12 +219,12 @@ def test_972_remote_success_streams_and_posts_local_log_digest(
     statuses, locks = transport(monkeypatch, remote_pr)
     certify(remote_pr)
     sha = remote_pr["head"]["sha"]
-    log = Path("out/certify") / sha / "remote-randy-mini/macos-arm64/run.log"
+    log = Path("out/certify") / sha / "remote-mac-fixture/macos-arm64/run.log"
     digest = hashlib.sha256(log.read_bytes()).hexdigest()
     assert "live remote test output" in capsys.readouterr().out
     assert "live remote test output" in log.read_text()
     assert [status["state"] for status in statuses] == ["pending", "success"]
-    assert "randy-mini" in statuses[-1]["description"]
+    assert "mac-fixture" in statuses[-1]["description"]
     assert digest in statuses[-1]["description"]
     assert locks == ["lock", "unlock"]
 
@@ -275,25 +300,189 @@ def test_972_generic_only_posts_only_its_remote_layer(
     assert locks == ["lock", "unlock"]
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Uses POSIX remote executable fixtures"
+)
+@pytest.mark.parametrize(
+    ("scenario", "refusal"),
+    [
+        ("missing-wheel", "missing or corrupt wheel archive"),
+        ("missing-checkout", "checkout is not prepared"),
+        ("busy", "test coordinator has no free slot"),
+        ("prepared", None),
+    ],
+)
+def test_1632_prepared_only_remote_bootstrap(
+    remote_pr: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    scenario: str,
+    refusal: str | None,
+) -> None:
+    if shutil.disk_usage(tmp_path).free < 30 * 1024**3:
+        pytest.skip("Remote bootstrap requires its 30 GiB disk reserve")
+    head = remote_pr["head"]["sha"]
+    remote_pr["base"]["sha"] = head
+    home = tmp_path / "remote-home"
+    root = home / "src/wgsextract-cli"
+    root.parent.mkdir(parents=True)
+    origin = tmp_path / "origin.git"
+    git = shutil.which("git")
+    assert git is not None
+    subprocess.run([git, "clone", "-q", str(origin), str(root)], check=True)
+    checkout = root / "scratch" / f"certify-{head}"
+    if scenario != "missing-checkout":
+        subprocess.run(
+            [
+                git,
+                "-C",
+                str(root),
+                "worktree",
+                "add",
+                "-q",
+                "--detach",
+                str(checkout),
+                head,
+            ],
+            check=True,
+        )
+    bin_dir = home / ".pixi/bin"
+    bin_dir.mkdir(parents=True)
+    audit = home / "tool-events"
+    worker = Path(__file__).resolve().parents[1] / "scripts/ci_certify_remote_worker.py"
+    package = {"name": "retained", "kind": "pypi", "version": "1", "sha256": "a" * 64}
+    metadata = "Name: retained\nVersion: 1\n"
+    if scenario == "prepared":
+        wheels = checkout / "out/certify/inputs/wheels"
+        wheels.mkdir(parents=True)
+        wheel = wheels / "retained.whl"
+        with zipfile.ZipFile(wheel, "w") as archive:
+            archive.writestr("retained-1.dist-info/METADATA", metadata)
+        package["sha256"] = hashlib.sha256(wheel.read_bytes()).hexdigest()
+        wheel.rename(wheels / f"{package['sha256']}.whl")
+    environments = (
+        ("default", "dev") if scenario in {"missing-wheel", "prepared"} else ()
+    )
+    for name in environments:
+        prefix = checkout / ".pixi/envs" / name
+        meta = prefix / "conda-meta"
+        meta.mkdir(parents=True)
+        (meta / "pixi").touch()
+        dist = prefix / "lib/python3/site-packages/retained-1.dist-info"
+        dist.mkdir(parents=True)
+        (dist / "METADATA").write_text(metadata)
+        (dist / "RECORD").write_text("retained-1.dist-info/RECORD,,\n")
+    if checkout.exists():
+        # Keep prepared environments and logs out of the clean-tree check.
+        with (root / ".git/info/exclude").open("a") as ignore:
+            ignore.write("\n.pixi/\nscratch/\n")
+
+    tools = {
+        "git": f"""
+if 'fetch' in args:
+    note('fetch')
+    args = [{str(origin)!r} if arg == 'https://github.com/WGSExtract/wgsextract-cli.git'
+            else arg for arg in args]
+os.execv({git!r}, [{git!r}, *args])
+""",
+        "agent-coord": f"""
+if args[0] == 'check':
+    note('capacity check')
+    if {scenario == "busy"!r}:
+        raise SystemExit('test coordinator has no free slot')
+elif args[0] == 'run':
+    note('worker admission')
+    command = args[args.index('--') + 1:]
+    os.execvp(command[0], command)
+""",
+        "pixi": f"""
+if args[0] == 'list':
+    print(json.dumps({[package]!r}))
+elif 'scripts/ci_certify_remote_worker.py' in args:
+    note('prepared worker' if '--prepared-only' in args else 'ordinary worker')
+    worker_args = args[args.index('scripts/ci_certify_remote_worker.py') + 1:]
+    os.execv(sys.executable, [sys.executable, {str(worker)!r}, *worker_args])
+elif 'scripts/ci_certify_setup.py' in args or 'install' in args:
+    note('provisioned')
+    raise SystemExit('unexpected remote provisioning')
+""",
+    }
+    for tool, body in tools.items():
+        executable = bin_dir / tool
+        executable.write_text(
+            f"#!{sys.executable}\nimport json, os, sys\nfrom pathlib import Path\n"
+            f"args = sys.argv[1:]\ndef note(event):\n"
+            f"    with Path({str(audit)!r}).open('a') as log:\n"
+            f"        log.write(event + '\\n')\n{body}"
+        )
+        executable.chmod(0o700)
+
+    platform = host_platform()
+    config = tmp_path / "remote-hosts.toml"
+    config.write_text(
+        f'[[certification.hosts]]\nalias = "prepared-host"\nplatform = "{platform}"\n'
+    )
+    statuses, locks = transport(
+        monkeypatch,
+        remote_pr,
+        result_platform=platform,
+        remote_environment={"HOME": str(home), "PATH": os.environ["PATH"]},
+    )
+    if refusal is None:
+        certify(
+            remote_pr,
+            remote="prepared-host",
+            config=config,
+            generic=True,
+            prepared_only=True,
+        )
+    else:
+        with pytest.raises(
+            ValueError, match="Remote (certification|transport/setup) refused"
+        ):
+            certify(
+                remote_pr,
+                remote="prepared-host",
+                config=config,
+                generic=True,
+                prepared_only=True,
+            )
+    log = Path("out/certify") / head / "remote-prepared-host/generic/run.log"
+    if refusal is not None:
+        assert refusal in log.read_text()
+    assert [entry["state"] for entry in statuses] == [
+        "pending",
+        "success" if refusal is None else "error",
+    ]
+    assert locks == ["lock", "unlock"]
+    events = audit.read_text().splitlines() if audit.exists() else []
+    assert "provisioned" not in events
+    if scenario in {"missing-checkout", "busy"}:
+        assert events == (["capacity check"] if scenario == "busy" else [])
+        assert checkout.exists() == (scenario == "busy")
+    else:
+        assert "prepared worker" in events
+
+
 def test_1495_selects_next_native_windows_host(
     remote_pr: dict[str, Any], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     config = tmp_path / "config.toml"
     config.write_text(
-        '[[certification.hosts]]\nalias = "minipc"\nplatform = "windows-x64"\n'
-        '[[certification.hosts]]\nalias = "seraph"\nplatform = "windows-x64"\n'
+        '[[certification.hosts]]\nalias = "windows-offline"\nplatform = "windows-x64"\n'
+        '[[certification.hosts]]\nalias = "windows-fixture"\nplatform = "windows-x64"\n'
     )
     statuses, locks = transport(
         monkeypatch,
         remote_pr,
-        unavailable="minipc",
+        unavailable="windows-offline",
         result_platform="windows-x64",
         layer="windows-x64",
     )
     certify(remote_pr, remote="windows-x64", config=config)
     assert [status["state"] for status in statuses] == ["pending", "success"]
     assert statuses[-1]["context"] == "local-ci/windows-x64"
-    assert statuses[-1]["description"].startswith("seraph ")
+    assert statuses[-1]["description"].startswith("windows-fixture ")
     assert locks == ["lock", "unlock"]
 
 
@@ -303,6 +492,21 @@ def test_1495_rejects_unregistered_ssh_options(
     statuses, locks = transport(monkeypatch, remote_pr)
     with pytest.raises(ValueError, match="No registered certification host"):
         certify(remote_pr, remote="-oProxyCommand=anything")
+    assert not statuses and not locks
+
+
+@pytest.mark.parametrize("has_config", [False, True])
+def test_remote_macos_requires_a_registered_host(
+    remote_pr: dict[str, Any], monkeypatch: pytest.MonkeyPatch, has_config: bool
+) -> None:
+    config = Path("unconfigured-hosts.toml")
+    if has_config:
+        config.write_text("[certification]\nhosts = []\n")
+    statuses, locks = transport(monkeypatch, remote_pr)
+    with pytest.raises(ValueError, match="No registered certification host") as error:
+        certify(remote_pr, remote="macos-arm64", config=config)
+    assert str(config) in str(error.value)
+    assert "[[certification.hosts]]" in str(error.value)
     assert not statuses and not locks
 
 

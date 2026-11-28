@@ -134,6 +134,28 @@ test("the Tools page shows the computer the CLI runs on, from deps list's host",
     assert.deepEqual(items({ details: { tools: [] } }).facts, []);
 });
 
+test("Tools rows list installed tools first (mandatory, pre-installed, the rest), then missing, then unavailable", () => {
+    const order = items({ details: { tools: [
+        tool({ name: "sambamba", status: "unavailable" }),
+        tool({ name: "plink2" }),
+        tool({ name: "Gatk", status: "installed", path: "pixi run -e gatk gatk", environment: "gatk" }),
+        tool({ name: "minimap2", status: "installed", path: "/env/bin/minimap2", preinstalled: true }),
+        tool({ name: "bcftools", group: "mandatory", status: "installed", path: "/env/bin/bcftools" }),
+        tool({ name: "delly" }),
+        tool({ name: "abc", status: "installed", path: "pixi run -e abc abc", environment: "abc" }),
+        tool({ name: "bwa-mem3", status: "unavailable" }),
+    ] } }).items.map((row) => row.id);
+
+    assert.deepEqual(order, ["bcftools", "minimap2", "abc", "Gatk", "delly", "plink2", "bwa-mem3", "sambamba"]);
+});
+
+test("a table's keyword filter keeps rows holding every typed word, in any case", () => {
+    const text = "java17 openjdk 17.0.21 optional installed";
+    assert.ok(rowMatchesFilter(text, ""));
+    assert.ok(rowMatchesFilter(text, "  OpenJDK   installed "));
+    assert.ok(!rowMatchesFilter(text, "openjdk missing"));
+});
+
 test("the Tools table needs deps list's tool rows", () => {
     assert.throws(() => items({ details: {} }), /no tool list/);
 });

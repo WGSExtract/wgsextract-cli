@@ -7,11 +7,9 @@ a CLI and an app on one computer share the settings file and its libraries.
 System data (reference library, reference genomes, temporary files) stays local
 to the CLI's own data folder unless config.toml says otherwise."""
 
-import json
-import logging
+import os
+from collections.abc import Iterator
 from pathlib import Path
-
-from platformdirs import user_data_dir
 
 from wgsextract_cli.core.workspace_activity import (
     configured_desktop_data_dir,
@@ -30,19 +28,34 @@ MYGENOMES_FOLDER = "mygenomes"
 LEGACY_MYGENOMES_FOLDER = "datasets"
 
 
-def users_workspace() -> Path:
-    """Follow the desktop's location record, including pre-split moves."""
-    app_dirs = [
-        Path(user_data_dir(app, appauthor=False))
-        for app in ("WGSExtract-gui", "dev.guiforcli.web.embed.wgsextract")
-    ]
+def _desktop_data_dirs() -> Iterator[Path]:
     override = configured_desktop_data_dir()
     if override is not None:
-        app_dirs.insert(0, override)
-    for app_dir in dict.fromkeys(app_dirs):
+        yield override
+    local = os.environ.get("LOCALAPPDATA") if os.name == "nt" else None
+    for app in ("WGSExtract-gui", "dev.guiforcli.web.embed.wgsextract"):
+        if local and Path(local).is_absolute():
+            # The desktop uses LOCALAPPDATA; retain the Windows known-folder
+            # lookup for installs whose inherited environment has changed.
+            yield Path(local) / app
+        from platformdirs import user_data_dir
+
+        yield Path(user_data_dir(app, appauthor=False))
+
+
+def users_workspace() -> Path:
+    """Follow the desktop's location record, including pre-split moves."""
+    seen = set()
+    for app_dir in _desktop_data_dirs():
+        if app_dir in seen:
+            continue
+        seen.add(app_dir)
         record = app_dir / "settings.json"
         try:
-            settings = json.loads(record.read_text(encoding="utf-8"))
+            document = record.read_text(encoding="utf-8")
+            import json
+
+            settings = json.loads(document)
             for key in (
                 "usersWorkspaces",
                 "bundleWorkspacesDirectory",
@@ -61,7 +74,11 @@ def users_workspace() -> Path:
                 if isinstance(chosen, str) and Path(chosen).is_absolute():
                     return Path(chosen)
             return Path.home() / FOLDER_NAME
+        except FileNotFoundError:
+            continue
         except (OSError, ValueError, AttributeError) as error:
+            import logging
+
             logging.debug("Cannot read users workspace record %s: %s", record, error)
     return Path.home() / FOLDER_NAME
 
@@ -82,6 +99,8 @@ def claim_users_workspace(folder: Path) -> None:
             SENTINEL_CONTENTS, encoding="utf-8", newline="\n"
         )
     except OSError as e:
+        import logging
+
         logging.debug(f"Could not mark {folder} as the users workspace: {e}")
 
 

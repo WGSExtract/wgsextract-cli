@@ -477,7 +477,7 @@ if record["cram_version"] and record["cram_version"] >= [3, 1] and {old_htslib!r
                          "[ERROR] Failed to read alignment record (BAM/CRAM decode error)."]
 elif os.path.exists({failure!r}):
     failure = json.load(open({failure!r}))
-if failure["errors"]:
+def report_failure():
     # Clair3 reports on stdout, tee'd to run_clair3.log or a step log;
     # parallel exits quietly.
     log = os.path.join(out, failure["log"])
@@ -487,6 +487,8 @@ if failure["errors"]:
     print("\\n".join(failure["errors"]))
     sys.stderr.write(failure["stderr"])
     sys.exit(8)
+if failure["errors"] and not failure.get("after_vcf"):
+    report_failure()
 regions = ["-R", opts["bed_fn"]] if "bed_fn" in opts else []
 calls = os.path.join(out, "calls.vcf.gz")
 mpileup = subprocess.Popen(
@@ -522,6 +524,8 @@ subprocess.run(
      os.path.join(out, "merge_output.vcf.gz"), named],
     check=True,
 )
+if failure["errors"] and failure.get("after_vcf"):
+    report_failure()
 stats = subprocess.run([{samtools!r}, "idxstats", opts["bam_fn"]], capture_output=True,
                        text=True, check=True).stdout.splitlines()
 with_reads = {{row.split("\\t")[0] for row in stats if int(row.split("\\t")[2])}}
@@ -553,14 +557,9 @@ class FakeClair3:
     bundled ``models`` folder beside it, as Bioconda installs it.
 
     Like Clair3 it needs the model's weights, runs its own Python (it fails
-    if PYTHONPATH leaks in) and waits on an open stdin (it fails instead).
-    Like the bundled htslib of Clair3 before 2.0.5 (``version``) it fails on
-    CRAM 3.1 reads, reporting only on stdout and in its step logs; ``fail`` makes it fail that way on any
-    reads. With ``--use_gpu=True`` it needs a container started with
-    ``--gpus`` (FakeDocker), as in HKU's GPU image. Like Clair3 it calls
-    nothing, yet exits 0, when a path it is given contains a space; ``lose_gvcf``
-    makes it skip the gVCF it was asked for, and ``miss_indels`` call no indels. Each run's options, resolved model, reads' CRAM
-    version, region BED, stdin state and PYTHONPATH go to ``runs``.
+    if PYTHONPATH leaks in) and     rejects open stdin, old versions fail on CRAM 3.1, and GPU calling needs
+    FakeDocker with ``--gpus``. Like Clair3 it exits 0 without calling if a
+    path contains a space. ``runs`` returns the options and input metadata.
     """
 
     def __init__(
@@ -592,11 +591,20 @@ class FakeClair3:
         *errors: str,
         log: str = "log/1_call_var_bam_pileup.log",
         stderr: str = "",
+        after_vcf: bool = False,
     ) -> None:
         """Fail later runs with these error lines on stdout and in ``log``
-        (relative to Clair3's output folder), and ``stderr`` on stderr."""
+        (relative to Clair3's output folder), and ``stderr`` on stderr.
+        Set ``after_vcf`` to fail after the variant VCF has been written."""
         self.failure.write_text(
-            json.dumps({"errors": list(errors), "log": log, "stderr": stderr})
+            json.dumps(
+                {
+                    "errors": list(errors),
+                    "log": log,
+                    "stderr": stderr,
+                    "after_vcf": after_vcf,
+                }
+            )
         )
 
     def pad_blocks(self, padding: int) -> None:
@@ -1192,7 +1200,7 @@ elif args[0] == "events":
 elif args[0] == "run":
     opts, i = {"-e": [], "-v": [], "--mount": []}, 1
     while args[i].startswith("-"):
-        if args[i] == "--rm" or args[i].startswith("--pull="):
+        if args[i] == "--rm" or args[i].startswith(("--pull=", "--network=")):
             opts[args[i].split("=")[0]], i = args[i], i + 1
         elif args[i] in ("-e", "-v", "--mount"):
             opts[args[i]].append(args[i + 1])
@@ -1210,6 +1218,7 @@ elif args[0] == "run":
     name = opts.get("--name", "anonymous")
     log({"cmd": "run", "image": image, "name": name, "label": opts.get("--label"),
          "entrypoint": opts.get("--entrypoint"), "pull": opts.get("--pull"),
+         "network": opts.get("--network"),
          "gpus": opts.get("--gpus"), "cpus": opts.get("--cpus"), "env": env,
          "mounts": mounts,
          "command": command})
@@ -1455,8 +1464,10 @@ elif tool in ("deepvariant", "haplotypecaller"):
     for chrom, pos in sorted(set(starts), key=lambda s: (order.index(s[0]), s[1])):
         base = subprocess.run([TOOLS["samtools"], "faidx", ref, f"{chrom}:{pos}-{pos}"],
                               capture_output=True, text=True, check=True).stdout
-        base = base.splitlines()[1].upper()
-        alt = "C" if base != "C" else "G"
+        base = base.splitlines()[1]
+        alt = "C" if base.upper() != "C" else "G"
+        if base.islower():
+            alt = alt.lower()
         calls.append(f"{chrom}\t{pos}\t.\t{base}\t{alt}\t50\tPASS\t.\tGT\t1/1")
     out = opt("--out-variants")
     vcf = out

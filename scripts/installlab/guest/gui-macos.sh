@@ -102,7 +102,8 @@ wait_for_app_exit() {
 
 download_dmg() {
     mkdir -p "$HOME/Downloads" &&
-        curl -fsSL -o "$DMG" "$LAB_DMG_URL" &&
+        curl -fsSL --retry 3 --retry-all-errors --connect-timeout 15 \
+            --max-time 120 --retry-max-time 150 -o "$DMG" "$LAB_DMG_URL" &&
         # What a browser does to a download; Gatekeeper keys off it.
         xattr -w com.apple.quarantine "0083;$(printf '%x' "$(date +%s)");Safari;$(uuidgen)" "$DMG"
 }
@@ -177,6 +178,9 @@ app_setup() {
 }
 
 tauri_setup() {
+    # This automated setup on a disposable guest explicitly opts into downloads.
+    mkdir -p "$APP_DATA" &&
+        printf '%s\n' '{"networkConsent":"accepted","networkMode":"full","checkForUpdatesAtLaunch":false}' > "$APP_DATA/settings.json" || return 1
     env GUI_FOR_CLI_AUTO_RUN_SETUP=1 GUI_FOR_CLI_SETUP_EVENTS_LOG="$events" \
         WGSEXTRACT_GUI_AUTO_RUN_SETUP=1 WGSEXTRACT_GUI_SETUP_EVENTS_LOG="$events" \
         ${LAB_ARCHIVE_URL:+WGSEXTRACT_ARCHIVE_URL="$CLI_ARCHIVE"} \
@@ -297,7 +301,8 @@ if [ "$MODE" = "control" ]; then
 fi
 
 if [ -n "${LAB_ARCHIVE_URL:-}" ]; then
-    curl -fsSL -o "$CLI_ARCHIVE" "$LAB_ARCHIVE_URL"
+    curl -fsSL --retry 3 --retry-all-errors --connect-timeout 15 \
+        --max-time 120 --retry-max-time 150 -o "$CLI_ARCHIVE" "$LAB_ARCHIVE_URL"
 fi
 step download_dmg download_dmg
 step install_app install_app

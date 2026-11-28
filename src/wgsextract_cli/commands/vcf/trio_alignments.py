@@ -24,6 +24,7 @@ from wgsextract_cli.core.paths import append_suffix
 from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed
+from wgsextract_cli.core.vcf_output import uppercase_vcf
 
 ALIGNMENT_SUFFIXES = (".bam", ".cram")
 TRIO_SAMPLES = ("PROBAND", "MOTHER", "FATHER")
@@ -139,9 +140,18 @@ def _call_region(
         [
             ["bcftools", "mpileup", "-r", region, "-T", sites, "-f", ref]
             + [*_MPILEUP_ARGS, "-G", read_groups, "-Ou", *alignments],
-            ["bcftools", "call", "-m", "-v", "--samples-file", samples[1]]
-            + ploidy_args
-            + ["-Oz", "-o", out_vcf],
+            *uppercase_vcf(
+                [
+                    "bcftools",
+                    "call",
+                    "-m",
+                    "-v",
+                    "--samples-file",
+                    samples[1],
+                    *ploidy_args,
+                ],
+                out_vcf,
+            ),  # fmt: skip
         ],
         stdout=subprocess.DEVNULL,
         description=f"Joint trio genotyping over {region}",
@@ -226,7 +236,7 @@ def remove_index(vcf: str) -> None:
 def split_multiallelic(vcf: str, out_vcf: str) -> str:
     """One record per ALT, so genotype classes and AD[:1] refer to one allele."""
     remove_index(out_vcf)
-    run_command(["bcftools", "norm", "-m", "-any", "-Oz", "-o", out_vcf, vcf])
+    run_pipeline(uppercase_vcf(["bcftools", "norm", "-m", "-any"], out_vcf, source=vcf))
     ensure_vcf_indexed(out_vcf)
     return out_vcf
 

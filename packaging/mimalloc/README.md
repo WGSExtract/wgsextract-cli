@@ -10,7 +10,7 @@ conda-forge's `mimalloc` is built with override off, so it can't replace malloc
 when injected.
 
 The recipe's tests check that, injected, the library takes over the C
-library's `malloc()` in a Python process, and that bioconda's bcftools 1.24
+library's `malloc()` in a Python process, and that Bioconda's bcftools 1.25
 loads it.
 
 The published [wgse-mimalloc-1 release](https://github.com/WGSExtract/wgsextract-cli/releases/tag/wgse-mimalloc-1)

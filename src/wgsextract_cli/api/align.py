@@ -40,7 +40,7 @@ from ._shared import (
 )
 
 PLATFORMS = ("illumina", "dnbseq", "ultima", "pacbio", "hifi", "clr", "ont", "nanopore")
-ALIGNERS = ("auto", "bwa", "bwa-mem2", "bwa-mem3", "minimap2", "pbmm2")
+ALIGNERS = ("auto", "bwa", "bwa-mem2", "bwa-mem3", "minimap2", "pbmm2", "bonefish")
 PRESETS = ("sr", "map-pb", "map-hifi", "map-ont", "ccs", "subread")
 REALIGN_STEPS = ("extract", "align", "index")
 
@@ -105,9 +105,7 @@ _FORMAT_DOC = "Default: BAM. CRAM is written with the target reference."
 def _output_profile_param() -> Any:
     return param(
         None,
-        help="Lossless output: default keeps --format; archive selects CRAM 3.1 "
-        "(GATK >=4.7); calling selects CRAM 3.0. Default: config output_profile, "
-        "else default. See docs/ont.md.",
+        help="Lossless CRAM profile (default keeps --format). See docs/ont.md.",
         choices=OUTPUT_PROFILES,
         config_key="output_profile",
     )
@@ -166,7 +164,7 @@ class AlignParams(Params):
         "has its index (see `ref index`), else bwa; for long reads pbmm2 for PacBio "
         "when installed, otherwise minimap2. bwa-mem3 (wgse-bwa-mem3 on Apple "
         "Silicon and Linux x86-64, else bwa-mem3 from PATH or its Pixi environment) writes bwa's exact records faster, "
-        "from bwa-mem2's index.",
+        "from bwa-mem2's index. Experimental bonefish 0.5.2+ maps ONT/HiFi DNA.",
         choices=ALIGNERS,
     )
     fast: bool = _fast_param()
@@ -182,7 +180,7 @@ class AlignParams(Params):
         False,
         help=CLI_HELP["arg_long_read"],
         doc="Treat the reads as long reads (PacBio/ONT) and align them with "
-        "pbmm2 or minimap2.",
+        "pbmm2, minimap2, or an explicitly selected bonefish.",
         action="store_true",
     )
     format: str | None = param(
@@ -223,7 +221,7 @@ class RealignParams(Params):
     the machine has the memory; FASTQs from an earlier extraction (beside the
     input or in ``outdir``) or given as ``r1``/``r2`` are reused. Single-end
     ONT and PacBio reads (detected, or ``platform``) stream each read's primary
-    record with its MM/ML tags into minimap2. Free disk
+    record with its MM/ML tags into minimap2 or experimental bonefish. Free disk
     space is checked first. Completed steps (extract, align, index) are
     recorded in ``<output>.steps.json`` and skipped on a rerun whose inputs,
     settings and tools are unchanged."""
@@ -243,8 +241,8 @@ class RealignParams(Params):
     aligner: str = param(
         "auto",
         help="Aligner to use (matches the 'align' command).",
-        doc="Aligner: auto, bwa, bwa-mem2, bwa-mem3, minimap2 or pbmm2, chosen "
-        "as for align.",
+        doc="Aligner: auto, bwa, bwa-mem2, bwa-mem3, minimap2, pbmm2 or "
+        "experimental bonefish, chosen as for align.",
         choices=ALIGNERS,
     )
     fast: bool = _fast_param()
@@ -297,7 +295,7 @@ class RealignParams(Params):
         "4G",
         help="ONT/PacBio input per chunk (K/M/G/T; 0: one pass). Resumes "
         "unfinished chunks and bounds temporary files. Requires sorted, "
-        "indexed input; ignored with --keep-fastq.",
+        "indexed input and minimap2; ignored with --keep-fastq or bonefish.",
     )
     no_preflight: bool = no_preflight_param()
     restart: bool = restart_param()

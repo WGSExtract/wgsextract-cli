@@ -9,7 +9,7 @@ CLI_HELP = {
     "cmd_call": "Call several variant types in one run: SNPs and InDels (bcftools), SVs and CNVs, each into its own VCF, and with --merge also into one combined VCF.",
     "cmd_cnv": "Call Copy Number Variants (CNVs) using Delly. Detects large regions of DNA that have been duplicated or deleted, affecting gene dosage. (Not tested on macOS.)",
     "cmd_freebayes": "A Bayesian genetic variant detector. Excellent for finding small variants in complex regions or when you have variable sequencing depth.",
-    "cmd_gatk": "Industry-standard GATK HaplotypeCaller. Best for high-accuracy clinical-grade SNP and InDel calling using local de novo assembly.",
+    "cmd_gatk": "Call SNPs and indels with GATK HaplotypeCaller using local de novo assembly.",
     "cmd_deepvariant": "Google's Deep Variant variant caller. Supports WGS/WES and PacBio HiFi models; uses a neural network to achieve superior accuracy by 'looking' at read alignments as images. (Not tested on macOS.)",
     "cmd_clair3": "Clair3 small-variant caller for Oxford Nanopore reads (optional; Linux x86-64/ARM64 and Apple Silicon macOS, install with `pixi install -e clair3`). DeepVariant remains the default ONT caller.",
     "cmd_impute": "Impute a GRCh38 sample from the 1000 Genomes 30x panel: low-coverage reads with GLIMPSE2, or a genotype-only VCF with Beagle. Optional; Linux x64, Windows x64 and Intel macOS, `pixi install -e imputation`.",

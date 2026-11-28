@@ -835,10 +835,10 @@ def test_1289_gnomad_v4_build_and_annotation_keep_group_max_and_homozygotes(tmp_
     table = reflib / "downloads" / "gnomad_hg38.tsv.gz"
     with gzip.open(table, "rt") as f:
         assert f.read().splitlines()[1:] == [
-            "#CHROM\tPOS\tREF\tALT\tAF\tAF_grpmax_joint\tnhomalt_joint",
-            "chr1\t100\tC\tT\t0.125\t0.375\t0",
-            "chr1\t100\tC\tG\t0.5\t0.625\t3",
-            "chr2\t50\tA\tG\t0.01\t.\t.",
+            "#CHROM\tPOS\tREF\tALT\tAF\tAF_grpmax_joint\tnhomalt_joint\tfafmax_faf95_max_joint",
+            "chr1\t100\tC\tT\t0.125\t0.375\t0\t.",
+            "chr1\t100\tC\tG\t0.5\t0.625\t3\t.",
+            "chr2\t50\tA\tG\t0.01\t.\t.\t.",
         ]
 
     sample = _write_vcf(
@@ -875,7 +875,11 @@ def test_1289_gnomad_v4_build_and_annotation_keep_group_max_and_homozygotes(tmp_
 
 @needs_bcftools
 @pytest.mark.parametrize("resource_format", ["legacy_tsv", "gnomad_vcf"])
-def test_1289_gnomad_annotation_accepts_old_tables_and_vcf(tmp_path, resource_format):
+def test_1623_reannotation_replaces_stale_faf95_with_the_selected_callset(
+    tmp_path, resource_format
+):
+    from wgsextract_cli import api
+
     if resource_format == "legacy_tsv":
         resource = tmp_path / "old.tsv"
         resource.write_bytes(b"#CHROM\tPOS\tREF\tALT\tAF\nchr1\t100\tC\tT\t0.25\n")
@@ -883,27 +887,33 @@ def test_1289_gnomad_annotation_accepts_old_tables_and_vcf(tmp_path, resource_fo
         resource = Path(
             _write_vcf(
                 tmp_path / "gnomad.vcf.gz",
-                "{c}\t100\t.\tC\tT\t.\tPASS\tAF=0.25;AF_grpmax=0.375;nhomalt=7\n",
+                "{c}\t100\t.\tC\tT\t.\tPASS\t"
+                "AF=0.25;AF_grpmax=0.375;nhomalt=7;faf95=0.1;fafmax_faf95_max=0.125\n",
                 header=(
+                    "##reference=GRCh38\n"
                     '##INFO=<ID=AF,Number=A,Type=Float,Description="Frequency">\n'
                     '##INFO=<ID=AF_grpmax,Number=A,Type=Float,Description="Group maximum">\n'
                     '##INFO=<ID=nhomalt,Number=A,Type=Integer,Description="Homozygotes">\n'
+                    '##INFO=<ID=faf95,Number=A,Type=Float,Description="Overall FAF95">\n'
+                    '##INFO=<ID=fafmax_faf95_max,Number=A,Type=Float,Description="Group max FAF95">\n'
                 ),
             )
         )
     sample = _write_vcf(
         tmp_path / "sample.vcf.gz",
-        "{c}\t100\t.\tC\tT\t.\tPASS\tGNOMAD_POPMAX_AF=0.875;GNOMAD_NHOMALT=100\n",
+        "{c}\t100\t.\tC\tT\t.\tPASS\t"
+        "GNOMAD_POPMAX_AF=0.875;GNOMAD_NHOMALT=100;GNOMAD_FAF95=0.9;fafmax_faf95_max_joint=0.8\n",
         header=(
             '##INFO=<ID=GNOMAD_POPMAX_AF,Number=A,Type=Float,Description="Old AF">\n'
             '##INFO=<ID=GNOMAD_NHOMALT,Number=A,Type=Integer,Description="Old count">\n'
+            '##INFO=<ID=GNOMAD_FAF95,Number=A,Type=Float,Description="Old FAF95">\n'
+            '##INFO=<ID=fafmax_faf95_max_joint,Number=A,Type=Float,Description="Old native FAF95">\n'
         ),
     )
     outdir = tmp_path / "out"
-    run_wgsextract(
-        "vcf", "gnomad", "--vcf-input", sample, "--gnomad-file", str(resource),
-        "--outdir", str(outdir),
-    )  # fmt: skip
+    result = api.vcf.gnomad(
+        api.VcfGnomadParams(vcf_input=Path(sample), gnomad_file=resource, outdir=outdir)
+    )
     run_wgsextract(
         "vcf", "table", "--vcf-input", str(outdir / "gnomad_annotated.vcf.gz"),
         "--outdir", str(outdir),
@@ -913,6 +923,11 @@ def test_1289_gnomad_annotation_accepts_old_tables_and_vcf(tmp_path, resource_fo
     assert row["gnomad_af"] == "0.25"
     expected = ("", "") if resource_format == "legacy_tsv" else ("0.375", "7")
     assert (row["gnomad_popmax_af"], row["gnomad_nhomalt"]) == expected
+    assert row["gnomad_faf95"] == ("" if resource_format == "legacy_tsv" else "0.125")
+    if resource_format == "gnomad_vcf":
+        assert result.metrics["gnomad_faf95_source"] == "fafmax_faf95_max"
+        assert result.resources[0].build == "hg38"
+        assert result.resources[0].source_url is None
 
 
 @needs_bcftools

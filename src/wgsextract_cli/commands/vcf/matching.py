@@ -14,6 +14,7 @@ from urllib.parse import quote
 
 from wgsextract_cli.core import clinical_evidence as ce
 from wgsextract_cli.core import variant_confidence as vc
+from wgsextract_cli.core.csq_alleles import split_origin
 from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 from wgsextract_cli.core.imputed_vcf import IMPUTED_TAG
 from wgsextract_cli.core.ref_library.resolver import header_contig_lengths
@@ -30,6 +31,7 @@ from wgsextract_cli.core.variant_files import (
     vcf_chromosomes,
 )
 from wgsextract_cli.core.variant_table import parse_header
+from wgsextract_cli.core.vcf_output import uppercase_vcf
 
 from .matching_tables import select_snv_rows, write_table
 from .resource_ref_check import (
@@ -38,6 +40,8 @@ from .resource_ref_check import (
     ref_mismatch_warning,
     warn_skipped_contigs,
 )
+
+_CLINICAL_TAGS = (ce.IDENTITY, ce.STARS, ce.TIER, ce.GERMLINE)
 
 
 def _write_vcf(
@@ -56,7 +60,7 @@ def _write_vcf(
             line
             for line in text.splitlines()
             if not line.startswith(
-                tuple(f"##INFO=<ID={tag}," for tag in (ce.IDENTITY, ce.STARS, ce.TIER))
+                tuple(f"##INFO=<ID={tag}," for tag in _CLINICAL_TAGS)
             )
         )
     header = parse_header(text.splitlines())
@@ -72,6 +76,7 @@ def _write_vcf(
                 ce.IDENTITY: "ClinVar resource record ID",
                 ce.STARS: "ClinVar review stars; not sequencing confidence",
                 ce.TIER: "ClinVar review tier; not sequencing confidence",
+                ce.GERMLINE: "Allele-bound ClinVar germline aggregate",
             }
         )
     records_written = 0
@@ -89,7 +94,7 @@ def _write_vcf(
             for tag, description in definitions.items():
                 if f"##INFO=<ID={tag}," not in text:
                     kind = "Integer" if tag == ce.STARS else "String"
-                    number = "A" if tag in {ce.STARS, ce.TIER} else "1"
+                    number = "A" if tag in {ce.STARS, ce.TIER, ce.GERMLINE} else "1"
                     emit(
                         f"##INFO=<ID={tag},Number={number},Type={kind},"
                         f'Description="{description}">\n'
@@ -117,10 +122,20 @@ def _write_vcf(
             has_multiallelic |= "," in fields[4]
             info = dict(item.partition("=")[::2] for item in fields[7].split(";"))
             if clinical:
-                for tag in (ce.IDENTITY, ce.STARS, ce.TIER):
+                for tag in _CLINICAL_TAGS:
                     info.pop(tag, None)
                 evidence_rows = []
-                for allele in range(len(fields[4].split(","))):
+                alts = fields[4].split(",")
+                origin = split_origin(info.get(SPLIT_TAG))
+                can_bind = (
+                    len(alts) == 1
+                    and ce.ORIGIN not in info
+                    and (
+                        SPLIT_TAG not in info
+                        or (origin is not None and len(origin[1]) == 1)
+                    )
+                )
+                for allele in range(len(alts)):
                     per_allele = dict(info)
                     for key in ("CLNREVSTAT", "CLNSIG", "CLNSIGCONF"):
                         field_number = info_numbers.get(key)
@@ -131,6 +146,13 @@ def _write_vcf(
                                 values[index] if index < len(values) else "."
                             )
                     evidence_rows.append(ce.review_evidence(per_allele))
+                    if (
+                        can_bind
+                        and (significance := per_allele.get("CLNSIG"))
+                        and significance != "."
+                        and "," not in significance
+                    ):
+                        info[ce.GERMLINE] = significance
                 info[ce.IDENTITY] = fields[2]
                 if any(e["stars"] is not None for e in evidence_rows):
                     info[ce.STARS] = ",".join(
@@ -175,10 +197,15 @@ def _write_vcf(
 
 
 def _left_align(source: str, reference: str, output: str, check_ref: str) -> None:
-    run_command(
-        ["bcftools", "norm", "-f", reference, "-c", check_ref, "-Oz", "-o", output, source],
-        capture_output=True,
-    )  # fmt: skip
+    run_pipeline(
+        uppercase_vcf(
+            ["bcftools", "norm", "-f", reference],
+            output,
+            source=source,
+            check_ref=check_ref,
+        ),
+        description="Normalize annotation query alleles",
+    )
 
 
 def _reference_lengths(reference: str) -> dict[str, int]:
@@ -416,7 +443,7 @@ def _compose(query: str, resource: str, work: str, thresholds: vc.Thresholds) ->
             if line.startswith("#"):
                 continue
             target = line.rstrip().split("\t")
-            ref, alt = target[3:5]
+            ref, alt = (a.upper() for a in target[3:5])
             if (
                 len(ref) < 2
                 or len(ref) != len(alt)
@@ -480,7 +507,7 @@ def _compose(query: str, resource: str, work: str, thresholds: vc.Thresholds) ->
                     continue
                 inserted = db.execute(
                     "INSERT INTO alleles VALUES (?, ?, ?, ?, ?, ?)",
-                    (f[0], int(f[1]), f[3], f[4], end, line.rstrip()),
+                    (f[0], int(f[1]), f[3].upper(), f[4].upper(), end, line.rstrip()),
                 )
                 db.execute(
                     "INSERT INTO spans VALUES (?, ?, ?)",
@@ -495,7 +522,7 @@ def _compose(query: str, resource: str, work: str, thresholds: vc.Thresholds) ->
             if targets:
                 emitted: set[tuple[str, str, str, str]] = set()
                 for target in targets:
-                    ref, alt = target[3:5]
+                    ref, alt = (a.upper() for a in target[3:5])
                     if (
                         len(ref) < 2
                         or len(ref) != len(alt)
@@ -531,17 +558,13 @@ def _compose(query: str, resource: str, work: str, thresholds: vc.Thresholds) ->
                             "SELECT record FROM alleles WHERE chrom=? AND pos=? AND ref=? AND alt=?",
                             (target[0], int(target[1]) + offset, r, a),
                         ).fetchall()
-                        matches = [
-                            str(row[0]).split("\t")
-                            for row in rows
-                            if str(row[0]).split("\t")[3:5] == [r, a]
-                        ]
-                        if len(matches) != 1:
+                        if len(rows) != 1:
                             break
-                        part = matches[0]
-                        parts.append(part)
+                        parts.append(str(rows[0][0]).split("\t"))
                     else:
-                        part_keys = {(int(p[1]), p[3], p[4]) for p in parts}
+                        part_keys = {
+                            (int(p[1]), p[3].upper(), p[4].upper()) for p in parts
+                        }
                         start, end = int(target[1]), int(target[1]) + len(ref) - 1
                         overlaps = db.execute(
                             "SELECT a.pos, a.ref, a.alt, a.record FROM spans s JOIN alleles a ON a.rowid=s.record_id "
@@ -710,7 +733,7 @@ def normalized_clinvar_resource(source: str, reference: str, work: str) -> str:
     return normalized_resource(
         source,
         reference,
-        ["", [], True],
+        ["", [], True, ce.GERMLINE],
         lambda: _normalize_resource(source, reference, work, True, source),
     )
 
@@ -765,7 +788,7 @@ def normalized_inputs(
         resource = normalized_resource(
             resource_source or source,
             reference,
-            ["", [], True]
+            ["", [], True, ce.GERMLINE]
             if clinical and is_vcf
             else [columns, list(headers), clinical],
             build,

@@ -3,8 +3,16 @@ set -euo pipefail
 
 download_verified() {
   local url=$1 sha256=$2 file=$3
-  curl --fail --silent --show-error --location --retry 3 --output "$file" "$url"
-  printf '%s  %s\n' "$sha256" "$file" | shasum -a 256 -c
+  echo "Fetching pinned reference $url (up to four attempts)."
+  if ! curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
+    --connect-timeout 15 --max-time 600 --retry-max-time 900 --remove-on-error --output "$file" "$url"; then
+    echo "::error::Could not fetch pinned reference $url." >&2
+    return 1
+  fi
+  if ! printf '%s  %s\n' "$sha256" "$file" | shasum -a 256 -c; then
+    rm -f "$file"
+    return 1
+  fi
 }
 
 build_indexes() {

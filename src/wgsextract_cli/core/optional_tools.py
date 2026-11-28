@@ -293,8 +293,11 @@ def _environment_for(tool: str) -> str:
 
 
 def _run_pixi(action: str, env: str) -> None:
+    from wgsextract_cli.core.network_policy import require_network
     from wgsextract_cli.core.utils import run_command
 
+    if action == "install":
+        require_network(f"Install Pixi environment {env}")
     argv = pixi_environment_argv(action, env)
     if argv is None:
         raise MissingDependencyError(

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 from pathlib import Path
 from urllib.parse import urlencode
@@ -103,7 +104,7 @@ def update(root: Path, domain: str) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=Path, default=Path("/Users/wgse/mockup-server"))
-    parser.add_argument("--domain", default="user/502")
+    parser.add_argument("--root", type=Path, default=Path.home() / "mockup-server")
+    parser.add_argument("--domain", help="launchd domain (default: user/<current UID>)")
     args = parser.parse_args()
-    update(args.root, args.domain)
+    update(args.root, args.domain or f"user/{os.getuid()}")

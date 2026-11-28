@@ -133,6 +133,10 @@ DOCS_ONLY_SCRIPTS = frozenset(
         "scripts/ci_optional_tools.py",
     }
 )
+SUBPROCESS_TEST_INPUTS = {
+    # The driver is imported inside Python source passed to a separate process.
+    "scripts/longrun.py": ("tests/test_longrun.py",),
+}
 
 
 def docs_test_targets(
@@ -293,6 +297,10 @@ def test_inputs(root: Path = ROOT) -> dict[str, frozenset[str]]:
     """Map repository paths/globs to the test modules that reference them."""
     root = root.resolve()
     references: defaultdict[str, set[str]] = defaultdict(set)
+    for relative, readers in SUBPROCESS_TEST_INPUTS.items():
+        references[relative].update(
+            reader for reader in readers if (root / reader).is_file()
+        )
 
     def record(
         path: Path, reader: str, *, directory: bool = True, files_only: bool = False

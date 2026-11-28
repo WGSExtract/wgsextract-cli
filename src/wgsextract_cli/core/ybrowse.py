@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import TextIO, cast
 
 from wgsextract_cli.core import read_scope
+from wgsextract_cli.core.network_policy import require_network
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 
 SOURCE_URL = "https://ybrowse.org/gbrowse2/gff/snps_hg38.vcf.gz"
@@ -244,6 +245,7 @@ def prepare_snapshot(snapshot: Path, directory: Path) -> dict[str, object]:
 
 
 def _download(path: Path) -> None:
+    require_network("yBrowse SNP table")
     logging.info(
         f"Licence: YBrowse SNP data is {COPYRIGHT} It is downloaded from "
         "ybrowse.org and is not part of WGS Extract."

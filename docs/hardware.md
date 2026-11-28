@@ -90,6 +90,18 @@ ONT read groups/UUID read names select minimap2 `map-ont`; CPU alignment
 and sorting retain MM/ML. See [ONT](ont.md) for methylation, Sniffles,
 Clair3 basecaller-matched models, phasing and qualification limits.
 
+#### Experimental bonefish
+
+The opt-in CPU `--aligner bonefish` path builds a bonefish index in memory
+from the reference FASTA on each run; it does not reuse a minimap2 `.mmi`.
+It needs a single index part (reference at most 8 billion bases) to stream
+reads. WGSE caps mapping batches at 10 million query bases and uses its
+normal samtools sorter. `--memory` controls sorting, not the mapper's total
+RAM; do not use the minimap2 memory estimate to size a bonefish run.
+Upstream reports under 9 GB for its mapper alone on human DNA at 4 threads
+with `-K 10M`; add room for the OS and samtools, and measure a slice before
+committing to a whole-genome run. See [ONT alignment](ont.md#experimental-cpu-backend-bonefish).
+
 ### Automatic short-read selection
 
 `--aligner auto` (the default) aligns short reads with bwa-mem2 when all of
@@ -485,6 +497,13 @@ speedup to other chips, or conclude PairHMM can never remain a bottleneck.
 
 ### Around the aligner
 
+On a four-core Linux HG002 slice, `--output-profile fast` reduced the
+post-alignment time (samblaster, sort and indexed CRAM) by 7.3% while
+increasing CRAM size by 21%. Level-1 BAM was 61.5% faster to encode on its
+own and 12% larger; the fast profile uses it for the raw BAM in staged
+alignment only. Neither timing includes mapping. See the [paired measurements
+and disk allowance](resource_estimates.md#fast-profile-on-a-linux-hg002-slice).
+
 Short reads stream from the aligner through samblaster into `samtools sort`
 (or through `samtools fixmate`, `sort` and `markdup` for single-end reads or
 when samblaster is missing). The last samtools stage writes the `.bai` or
@@ -684,7 +703,7 @@ Long reads work the same way with `wgse-minimap2` 0.4.0 or later (minimap2
   place of minimap2 for ONT, HiFi and other long reads. Its base-level gap fills
   run on the GPU and the rest on the CPU. Short reads (`sr`) stay entirely on the
   CPU.
-- **Gain (measured):** on the RTX 3090 machine above (8 threads), 40k HiFi reads
+- **Slice gains (measured):** on the RTX 3090 machine above (8 threads), 40k HiFi reads
   took 20.4 s against 32.5 s on its CPU backend and 45.6 s with Bioconda's
   minimap2. 47k ONT reads, which spend most of their time chaining, took 100.7 s
   against 111.6 s.
@@ -693,19 +712,18 @@ Long reads work the same way with `wgse-minimap2` 0.4.0 or later (minimap2
   that extra RAM wouldn't fit, it runs on the CPU. On a Mac, `wgse-minimap2`
   still runs on the CPU.
 
-Those gains are for mapping slices from an existing index, not for a
-whole-genome `realign` pipeline. They exclude input decoding, methylation-tag
-preservation, sorting and output encoding; the 21.4 h whole-genome CPU run
-is not a measured CUDA baseline. Whole-genome RTX 3090 qualification is still
-pending in
-[#1122 (Linux CUDA long-read alignment)](https://github.com/WGSExtract/wgsextract-cli/issues/1122).
+On the same Linux host, a streamed whole-genome HG002 ONT `realign` with CUDA
+finished about 8% sooner than upstream CPU minimap2 (15.3 h vs 16.6 h) and
+produced identical sorted decoded-record digests; see
+[whole-genome ONT requirements](resource_estimates.md#whole-genome-ont-requirements)
+for the measured setup, memory, VRAM and disk. The slice gains above are
+mapping-only and exclude input decoding, methylation-tag preservation, sorting
+and output encoding.
 The [native backend notes](../native/README.md#ont-chaining-and-qualification-scope)
 record a newer 93,328-read HG002 ONT CPU profile: sorting and chaining took
 about 64% of CPU time, dual-affine gap alignment 18.3%. Its native CPU records
 matched upstream 2.31 exactly. Real CUDA kernel and synthetic-genome
-failure/fallback tests also passed on the RTX 3090. The measured
-[whole-genome ONT realignment on Windows](resource_estimates.md#whole-genome-ont-requirements)
-covers a different host (RTX 5080) and does not qualify the Linux machine.
+failure/fallback tests also passed on the RTX 3090.
 
 On Linux ARM64 (for example Graviton, Ampere or Cobalt), the linux-aarch64
 `wgse-bwa` package has no GPU backend; its CPU backend runs bwa's steps with

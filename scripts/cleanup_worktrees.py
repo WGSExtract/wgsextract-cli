@@ -16,23 +16,24 @@ import subprocess
 import sys
 import uuid
 from collections.abc import Callable
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import ModuleType
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from scripts import cleanup_worktree_activity
+    from scripts import cleanup_worktree_activity, reference_store_paths
     from scripts import cleanup_worktree_git as git_tools
     from scripts import cleanup_worktree_inventory as inventory_files
+    from scripts.cleanup_worktree_git import Worktree
 
     activity = cleanup_worktree_activity
 else:
     # Isolated mode excludes the checkout from the import path. Execute only
     # the checked helper bytes, rather than searching that path for imports.
     def load_helper(name: str, digest: str) -> ModuleType:
-        source = Path(__file__).with_name(f"cleanup_worktree_{name}.py")
+        source = Path(__file__).with_name(f"{name}.py")
         code = source.read_bytes()
         if hashlib.sha256(code).hexdigest() != digest:
             raise SystemExit(f"Worktree {name} helper version mismatch")
@@ -42,17 +43,27 @@ else:
         return module
 
     inventory_files = load_helper(
-        "inventory", "215bbff8f7b84d128b6a97bef6b91a0740cf3806c2de8736c87f0f6465db1d49"
+        "cleanup_worktree_inventory",
+        "91b08bfc3fb10dd4e02e9fbe0f9d128664cfbb70e8ce075fa560c3d635630894",
     )
     activity = load_helper(
-        "activity", "2700ae87bfa047a1668db32a7a592beaf0b3d67013594420400eb31bda1125d1"
+        "cleanup_worktree_activity",
+        "2700ae87bfa047a1668db32a7a592beaf0b3d67013594420400eb31bda1125d1",
     )
     git_tools = load_helper(
-        "git", "3676bff1f83af0c58edda12dd7796aadba0c886906fbb6b2cd37d4d0141668f2"
+        "cleanup_worktree_git",
+        "a93258518b347e14c189003aab535135c14cc7ed8d7e01bdd3b6c3ac58f1c167",
+    )
+    reference_store_paths = load_helper(
+        "reference_store_paths",
+        "246607235b188988f37a69cc63327ad7563e42ec4533f409032bec63bd8fbaf9",
     )
 
 CleanupError = git_tools.CleanupError
 git = git_tools.git
+worktrees = git_tools.worktrees
+candidate = git_tools.candidate
+safe_directory = inventory_files.safe_directory
 REPO = "WGSExtract/wgsextract-cli"
 LEGACY_REPO = "theontho/wgsextract-cli"
 PROC = Path("/proc")
@@ -60,6 +71,7 @@ INSPECTOR_SOCKET = Path("/run/wgse-worktree-inspector.sock")
 INSPECTOR_UID = 0
 INSPECTOR_SHA256 = "512c326798a3971160a32392aa76cb22548d95cba385a8b3a9d30509a558abec"
 MIN_PR_AGE = timedelta(days=1)
+ELIGIBLE = {"eligible", "cache-eligible", "output-eligible"}
 PR_QUERY = """
 query($owner: String!, $name: String!, $endCursor: String) {
   viewer { login }
@@ -88,98 +100,23 @@ ERRORS = (
 )
 
 
-@dataclass
-class Worktree:
-    path: str
-    head: str
-    branch: str
-    locked: bool
-    unavailable: bool
-    detached: bool = False
-    reason: str = "not-assessed"
-    pr: int | None = None
-    recovery: str | None = None
-    archive: str | None = None
-    retained_reason: str = ""
-    planned_caches: list[str] = field(default_factory=list)
-    pruned_caches: list[str] = field(default_factory=list)
-    pruning_cache: str | None = None
-    disposable_outputs: list[str] = field(default_factory=list)
-
-    @property
-    def directory(self) -> Path:
-        return Path(self.path)
-
-
-def worktrees(root: Path) -> list[Worktree]:
-    result = []
-    for record in git(root, "worktree", "list", "--porcelain", "-z").split("\0\0"):
-        if not record:
-            continue
-        entries = dict(line.partition(" ")[::2] for line in record.split("\0"))
-        path = entries["worktree"]
-        if not Path(path).is_absolute():
-            raise CleanupError("Git reported a non-absolute worktree path")
-        result.append(
-            Worktree(
-                path,
-                entries.get("HEAD", ""),
-                entries.get("branch", ""),
-                "locked" in entries,
-                "prunable" in entries or "bare" in entries,
-                "detached" in entries,
-            )
-        )
-    if (
-        not result
-        or result[0].directory != root
-        or result[0].branch != "refs/heads/main"
-    ):
-        raise CleanupError("Run from this repository's primary checkout on main")
-    return result
-
-
-def safe_directory(path: Path, mode: int = 0o755) -> None:
-    path.mkdir(mode=mode, exist_ok=True)
-    info = path.lstat()
-    if (
-        not stat.S_ISDIR(info.st_mode)
-        or info.st_uid != os.geteuid()
-        or info.st_mode & 0o022
-        or (mode == 0o700 and info.st_mode & 0o077)
-    ):
-        raise CleanupError(f"Unsafe output directory: {path}")
-
-
-def candidate(
-    root: Path, tree: Worktree, trees: list[Worktree], include_detached: bool
-) -> str:
-    path = tree.directory
-    if path.parent != root / "scratch" or path.resolve() != path:
-        return "outside-canonical-scratch"
-    if tree.locked:
-        return "git-locked"
-    if tree.unavailable or not path.is_dir():
-        return "unavailable"
-    if tree.detached and include_detached:
-        if why := git_tools.detached_block(path, tree.head, tree.branch):
-            return why
-    elif not tree.branch.startswith("refs/heads/") or tree.branch == "refs/heads/main":
-        return "not-a-topic-branch"
-    if any(
-        other.directory != path and other.directory.resolve().is_relative_to(path)
-        for other in trees
-    ):
-        return "contains-registered-worktree"
-    return ""
-
-
-def link_blocks(root: Path, trees: list[Worktree], paths: set[Path]) -> set[Path]:
+def link_blocks(
+    root: Path, trees: list[Worktree], paths: set[Path], unreadable: set[Path]
+) -> set[Path]:
     if not paths:
         return set()
     for attempt in range(3):
         try:
-            return scan_links(root, trees, paths)
+            locations = [tree.directory.resolve() for tree in trees]
+            return inventory_files.dependency_links(
+                root,
+                locations,
+                paths,
+                git_tools.hook_paths,
+                reference_store_paths.store_path(locations),
+                reference_store_paths.worktree_alias,
+                unreadable,
+            )
         except FileNotFoundError as error:
             if attempt == 2:
                 raise CleanupError(
@@ -189,19 +126,6 @@ def link_blocks(root: Path, trees: list[Worktree], paths: set[Path]) -> set[Path
             # whole walk so its new location is examined too.
             trees = worktrees(root)
     raise AssertionError("unreachable dependency scan retry")
-
-
-def scan_links(root: Path, trees: list[Worktree], paths: set[Path]) -> set[Path]:
-    locations = {root}
-    hook_paths: list[tuple[Path, Path]] = []
-    for tree in trees:
-        location = tree.directory.resolve()
-        if not location.is_dir():
-            continue
-        if not location.is_relative_to(root):
-            locations.add(location)
-        hook_paths.extend((location, path) for path in git_tools.hook_paths(location))
-    return inventory_files.dependency_links(root, locations, paths, hook_paths)
 
 
 def inspected_paths(root: Path, paths: set[Path]) -> set[Path]:
@@ -321,7 +245,7 @@ def checked_tracked_files(path: Path, head: str) -> tuple[set[Path], str]:
 
 
 def contents(
-    path: Path, head: str, disposable: tuple[tuple[str, ...], ...]
+    path: Path, head: str, disposable: tuple[tuple[str, ...], ...], store: Path
 ) -> inventory_files.Inventory:
     tracked, reason = checked_tracked_files(path, head)
     if reason:
@@ -331,6 +255,7 @@ def contents(
         tracked,
         disposable,
         lambda names: git_tools.ignored_paths(path, names),
+        reference_store_paths.worktree_alias(path, store),
     )
 
 
@@ -482,15 +407,19 @@ def plan(
     trim_caches: bool,
     include_detached: bool,
     disposable: tuple[tuple[str, ...], ...],
+    unreadable: set[Path],
 ) -> dict[Path, inventory_files.Inventory]:
     paths = set()
     inventories: dict[Path, inventory_files.Inventory] = {}
+    store = reference_store_paths.store_path(
+        [tree.directory.resolve() for tree in trees]
+    )
     for tree in trees[1:]:
         tree.reason = candidate(root, tree, trees, include_detached)
         if not tree.reason and activity.mounted(tree.directory):
             tree.reason = "contains-mount"
         if not tree.reason:
-            inventory = contents(tree.directory, tree.head, disposable)
+            inventory = contents(tree.directory, tree.head, disposable, store)
             tree.reason = inventory.blocked
             if not tree.reason:
                 tree.disposable_outputs = sorted(map(str, inventory.disposable))
@@ -499,10 +428,14 @@ def plan(
                     paths.add(tree.directory)
                 if trim_caches:
                     paths.update(tree.directory / name for name in inventory.caches)
-    links = link_blocks(root, trees, paths)
+                paths.update(tree.directory / name for name in inventory.disposable)
+    links = link_blocks(root, trees, paths, unreadable)
     candidates = []
     for tree in trees[1:]:
         if tree.reason:
+            continue
+        if unreadable and any(path.is_relative_to(tree.directory) for path in paths):
+            tree.reason = "dependency-unverified"
             continue
         inventory = inventories[tree.directory]
         tree.retained_reason = inventory.retained or (
@@ -512,7 +445,13 @@ def plan(
             tree.planned_caches = [
                 name for name in inventory.caches if tree.directory / name not in links
             ]
-        if not tree.retained_reason or tree.planned_caches:
+        if tree.retained_reason:
+            tree.planned_outputs = [
+                str(name)
+                for name in sorted(inventory.disposable)
+                if tree.directory / name not in links
+            ]
+        if not tree.retained_reason or tree.planned_caches or tree.planned_outputs:
             tree.reason = "github-not-checked"
             candidates.append(tree)
         else:
@@ -537,7 +476,9 @@ def plan(
         if tree.directory in active:
             tree.reason = "active-process"
         elif tree.reason == "eligible" and tree.retained_reason:
-            tree.reason = "cache-eligible"
+            tree.reason = (
+                "output-eligible" if tree.planned_outputs else "cache-eligible"
+            )
     return inventories
 
 
@@ -573,9 +514,13 @@ def apply_tree(
     save: Callable[[], None],
     disposable: tuple[tuple[str, ...], ...],
     planned: inventory_files.Inventory,
+    unreadable: set[Path],
 ) -> str:
     path = tree.directory
-    inventory = contents(path, tree.head, disposable)
+    store = reference_store_paths.store_path(
+        [entry.directory.resolve() for entry in worktrees(root)]
+    )
+    inventory = contents(path, tree.head, disposable, store)
     if inventory.blocked:
         return inventory.blocked
     keep = bool(tree.retained_reason)
@@ -583,15 +528,24 @@ def apply_tree(
         return inventory.retained
     if inventory.disposable != planned.disposable:
         return "disposable-outputs-changed"
-    tree.reason = "cache-prune-in-progress" if keep else "removal-in-progress"
+    if not keep:
+        tree.reason = "removal-in-progress"
+    else:
+        tree.reason = (
+            "output-prune-in-progress"
+            if tree.planned_outputs
+            else "cache-prune-in-progress"
+        )
     save()
     archive_evidence(root, tree, inventory.evidence, run_id)
     save()
     paths = {path / name for name in tree.planned_caches} if keep else {path}
-    links = link_blocks(root, worktrees(root), paths)
+    links = link_blocks(root, worktrees(root), paths, unreadable)
+    if unreadable:
+        return "dependency-unverified"
     if reason := recheck(root, tree, inspector):
         return reason
-    if inventory != contents(path, tree.head, disposable):
+    if inventory != contents(path, tree.head, disposable, store):
         return "changed-during-archive"
     if not keep:
         if links:
@@ -622,6 +576,31 @@ def apply_tree(
         tree.pruned_caches.append(name)
         tree.pruning_cache = None
         save()
+    if tree.planned_outputs:
+        for name in tree.planned_outputs:
+            relative = Path(name)
+            linked = link_blocks(root, worktrees(root), {path / relative}, unreadable)
+            if unreadable:
+                return "dependency-unverified"
+            if linked:
+                continue
+            tree.pruning_output = name
+            save()
+            if reason := recheck(root, tree, inspector):
+                return reason
+            _, reason = checked_tracked_files(path, tree.head)
+            if reason:
+                return reason
+            if relative not in git_tools.ignored_paths(path, {relative}):
+                return "disposable-output-no-longer-ignored"
+            inventory_files.prune_output(path, relative, inventory.disposable[relative])
+            tree.pruned_outputs.append(name)
+            tree.pruning_output = None
+            save()
+        if tree.pruned_outputs:
+            return "output-pruned"
+        if not tree.pruned_caches:
+            return "outputs-changed-or-linked"
     return "cache-pruned" if tree.pruned_caches else "caches-changed-or-linked"
 
 
@@ -638,6 +617,7 @@ def cleanup(
 ) -> None:
     trees = worktrees(root)
     trees[0].reason = "primary-checkout"
+    unreadable: set[Path] = set()
     data: dict[str, object] = {
         "apply": apply,
         "github": github,
@@ -649,6 +629,7 @@ def cleanup(
 
     def save() -> None:
         data["worktrees"] = [asdict(tree) for tree in trees]
+        data["unreadable_dependency_paths"] = sorted(map(str, unreadable))
         staging = report.with_suffix(".pending")
         with staging.open("x") as handle:
             json.dump(data, handle, indent=2)
@@ -657,13 +638,18 @@ def cleanup(
 
     try:
         planned = plan(
-            root, trees, github, inspector, trim_caches, include_detached, disposable
+            root,
+            trees,
+            github,
+            inspector,
+            trim_caches,
+            include_detached,
+            disposable,
+            unreadable,
         )
         save()
         if apply:
-            eligible = [
-                tree for tree in trees if tree.reason in {"eligible", "cache-eligible"}
-            ]
+            eligible = [tree for tree in trees if tree.reason in ELIGIBLE]
             for tree in eligible:
                 tree.reason = recheck(root, tree, inspector)
                 if not tree.reason:
@@ -675,6 +661,7 @@ def cleanup(
                         save,
                         disposable,
                         planned[tree.directory],
+                        unreadable,
                     )
                 save()
     except ERRORS as exc:
@@ -684,8 +671,9 @@ def cleanup(
     print(
         f"{sum(tree.reason == 'removed' for tree in trees)} removed; "
         f"{sum(bool(tree.pruned_caches) for tree in trees)} cache-trimmed; "
-        f"{sum(tree.reason in {'eligible', 'cache-eligible'} for tree in trees)} verified eligible; "
-        f"{sum(not tree.pruned_caches and tree.reason not in {'removed', 'eligible', 'cache-eligible'} for tree in trees[1:])} skipped. "
+        f"{sum(bool(tree.pruned_outputs) for tree in trees)} output-trimmed; "
+        f"{sum(tree.reason in ELIGIBLE for tree in trees)} verified eligible; "
+        f"{sum(not (tree.pruned_caches or tree.pruned_outputs) and tree.reason not in ELIGIBLE | {'removed'} for tree in trees[1:])} skipped. "
         f"Report: {report.relative_to(root)}"
     )
 
@@ -723,7 +711,7 @@ def main(argv: list[str] | None = None) -> int:
         action="append",
         default=[],
         metavar="GLOB",
-        help="allow an explicitly named ignored output file glob under out/, tmp/ or scratch/ (repeatable)",
+        help="allow removal of ignored files matching a narrow glob under out/, tmp/ or scratch/ (repeatable)",
     )
     args = parser.parse_args(argv)
     try:

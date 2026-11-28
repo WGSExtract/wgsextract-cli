@@ -288,7 +288,7 @@ def call_partitioned(
     the GPU too. Each partition's gVCF is cut at its edges, gathered and
     published as ``<name>.g.vcf.gz`` with its provenance."""
     from wgsextract_cli.commands.vcf.basic import record_variants
-    from wgsextract_cli.core.atomic_output import safe_output
+    from wgsextract_cli.core.atomic_output import output_publication_scope, safe_output
     from wgsextract_cli.core.output_checks import warn_if_no_variants
     from wgsextract_cli.core.variant_files import ensure_vcf_indexed
 
@@ -296,6 +296,7 @@ def call_partitioned(
         caller_provenance,
         clip_gvcf,
         gather_gvcf,
+        publish_callset,
         publish_gvcf,
         record_gvcf,
     )
@@ -316,7 +317,8 @@ def call_partitioned(
     active = {i.ploidy for i in intervals if i.ploidy}
     if not active:
         raise WGSExtractError("The sex/ploidy policy excludes every requested base.")
-    out_gvcf = str(Path(setup.outdir, f"{name}.g.vcf.gz"))
+    output = Path(setup.outdir, f"{name}.vcf.gz")
+    out_gvcf = Path(setup.outdir, f"{name}.g.vcf.gz")
     provenance = (
         caller_provenance(
             gvcf.engine,
@@ -334,14 +336,32 @@ def call_partitioned(
         if provenance is None:
             run(params, 2, setup, True, None)
             return
-        with tempfile.TemporaryDirectory(
-            dir=scratch_parent(setup.outdir), prefix=".wgse_gvcf_"
-        ) as work:
+        with (
+            tempfile.TemporaryDirectory(
+                dir=scratch_parent(setup.outdir), prefix=".wgse_gvcf_"
+            ) as work,
+            tempfile.TemporaryDirectory(
+                dir=setup.outdir, prefix=".wgse_calls_"
+            ) as publish,
+        ):
             raw, cut = Path(work, "raw.g.vcf.gz"), Path(work, "cut.g.vcf.gz")
-            run(params, 2, setup, True, str(raw))
-            clip_gvcf(str(raw), intervals, setup.ref, str(cut))
-            publish_gvcf(str(cut), out_gvcf, provenance)
-        record_gvcf(out_gvcf)
+            with output_publication_scope():
+                run(
+                    replace(params, outdir=Path(publish)),
+                    2,
+                    replace(setup, outdir=publish),
+                    False,
+                    str(raw),
+                )
+                clip_gvcf(str(raw), intervals, setup.ref, str(cut))
+                publish_gvcf(str(cut), str(Path(publish, out_gvcf.name)), provenance)
+            publish_callset(Path(publish), output, out_gvcf)
+        record_variants(
+            str(output),
+            "variants",
+            warn_if_no_variants(str(output), setup.ref, params.region),
+        )
+        record_gvcf(str(out_gvcf))
         return
     if params.gpu and not gpu_ploidy:
         require_diploid(intervals, f"{name} --gpu")
@@ -361,7 +381,6 @@ def call_partitioned(
     from wgsextract_cli.core.dependency_checks import verify_dependencies
 
     verify_dependencies(["bcftools", "tabix", *(["samtools"] if gvcf else [])])
-    output = str(Path(setup.outdir, f"{name}.vcf.gz"))
     called = [i for i in intervals if i.ploidy]
     with tempfile.TemporaryDirectory(
         dir=scratch_parent(setup.outdir), prefix=".ploidy_"
@@ -374,13 +393,14 @@ def call_partitioned(
             bed = write_intervals(part / "regions.bed", partition)
             raw = part / "raw.g.vcf.gz"
             # The final manifest must name only persistent outputs.
-            run(
-                replace(params, outdir=part, region=bed),
-                ploidy,
-                replace(setup, outdir=str(part)),
-                False,
-                str(raw) if gvcf else None,
-            )
+            with output_publication_scope():
+                run(
+                    replace(params, outdir=part, region=bed),
+                    ploidy,
+                    replace(setup, outdir=str(part)),
+                    False,
+                    str(raw) if gvcf else None,
+                )
             bounded = str(part / "bounded.vcf.gz")
             # Callers may emit variants overlapping an interval edge; each POS
             # belongs to exactly one ploidy partition.
@@ -406,17 +426,35 @@ def call_partitioned(
                 for suffix in ("", ".tbi"):
                     Path(f"{raw}{suffix}").unlink(missing_ok=True)
                 evidence.append(clipped)
-        with safe_output(output) as staged:
-            combined = str(Path(work, "combined.vcf.gz"))
-            run_command(["bcftools", "concat", "-a", "-Oz", "-o", combined, *parts])
-            run_command(["bcftools", "sort", "-T", work, "-Oz", "-o", staged, combined])
-        if provenance:
+        combined = str(Path(work, "combined.vcf.gz"))
+        run_command(["bcftools", "concat", "-a", "-Oz", "-o", combined, *parts])
+        if provenance is None:
+            with safe_output(output) as staged:
+                run_command(
+                    ["bcftools", "sort", "-T", work, "-Oz", "-o", staged, combined]
+                )
+        else:
             gathered = str(Path(work, "gathered.g.vcf.gz"))
             gather_gvcf(evidence, work, gathered)
-            publish_gvcf(gathered, out_gvcf, provenance)
-    ensure_vcf_indexed(output)
+            with tempfile.TemporaryDirectory(
+                dir=setup.outdir, prefix=".wgse_calls_"
+            ) as publish:
+                staged_vcf = Path(publish, output.name)
+                run_command(
+                    ["bcftools", "sort", "-T", work, "-Oz", "-o", staged_vcf, combined]
+                )
+                ensure_vcf_indexed(staged_vcf)
+                with output_publication_scope():
+                    publish_gvcf(
+                        gathered, str(Path(publish, out_gvcf.name)), provenance
+                    )
+                publish_callset(Path(publish), output, out_gvcf)
+    if provenance is None:
+        ensure_vcf_indexed(output)
     record_variants(
-        output, "variants", warn_if_no_variants(output, setup.ref, params.region)
+        str(output),
+        "variants",
+        warn_if_no_variants(str(output), setup.ref, params.region),
     )
     if provenance:
-        record_gvcf(out_gvcf)
+        record_gvcf(str(out_gvcf))

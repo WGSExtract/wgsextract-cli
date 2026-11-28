@@ -273,6 +273,7 @@ def render(
     changes: dict[str, Change],
     pairs: list[Pair],
     moves: set[str],
+    budget: str,
 ) -> str:
     reports = evidence.reports
     coverage = evidence.coverage
@@ -289,6 +290,8 @@ def render(
         f"{evidence.sampled_out:,} pre-merge artifacts left out of the sample "
         f"(up to {PREMERGE_PER_LANE} per OS and stage, with priority for failed runs and "
         "same-SHA comparisons). Counts describe this sample, not the full suite.",
+        "",
+        budget,
         "",
         f"[Download full per-test timings, outcomes and coverage dates]({link}/actions/runs/{run_id}) "
         "from the run's `weekly-test-usefulness` artifact. Times are summed JUnit test "

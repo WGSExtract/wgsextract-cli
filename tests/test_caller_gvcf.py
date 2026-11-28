@@ -2,7 +2,9 @@
 fixture alignments, samtools and bcftools; only the callers are faked."""
 
 import gzip
+import os
 import random
+import stat
 import sys
 from collections import Counter
 from pathlib import Path
@@ -11,27 +13,36 @@ from types import SimpleNamespace
 import pytest
 
 from tests.htslib_helpers import (
+    bgzip_index,
     needs_htslib,
     run_wgsextract,
     sam_to_bam,
+    soft_mask_reference,
+    vcf_body,
     vcf_calls,
     write_fasta,
 )
 from tests.test_clair3 import clair3_gpu as clair3_gpu
 from tests.test_clair3 import fake_clair3 as fake_clair3
-from tests.test_clair3 import linux_x86 as linux_x86
-from tests.test_clair3 import make_model
+from tests.test_clair3 import gpu_call, make_model
 from tests.test_gatk_scatter import gatk as gatk
+from tests.test_parabricks import gpu as gpu
+from tests.test_parabricks import parabricks_x86 as parabricks_x86
 from wgsextract_cli import api
 from wgsextract_cli.api.vcf import VcfClair3Params, VcfGatkParams
+from wgsextract_cli.commands.vcf.caller_ploidy import PloidyInterval
+from wgsextract_cli.commands.vcf.reference_evidence import clip_gvcf, publish_gvcf
 from wgsextract_cli.core.reference_evidence import (
     INDEX_ROLE,
     ROLE,
+    Provenance,
     ReferenceEvidence,
     State,
 )
-from wgsextract_cli.core.utils import WGSExtractError
+from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.core.variant_confidence import Thresholds
+from wgsextract_cli.core.variant_files import ensure_vcf_indexed
+from wgsextract_cli.core.vcf_output import publish_called_vcf
 
 pytestmark = needs_htslib
 
@@ -88,9 +99,7 @@ def call(sample, caller, request, sex, region=None, **extra):
     }
     if caller == "gatk":
         return api.vcf.gatk(VcfGatkParams(**common), check=False)
-    # The fake first: it skips on Windows, which linux_x86 would hide.
     request.getfixturevalue("fake_clair3")
-    request.getfixturevalue("linux_x86")
     model = sample.root / "custom"
     if not model.exists():
         make_model(sample.root, "custom")
@@ -107,6 +116,149 @@ def state(gvcf, contig, position):
         Thresholds(10, 20, 20, 30), [(contig, position, position)]
     )
     return next(iter(spans)).state
+
+
+def test_1654_gvcf_publication_changes_only_allele_sequence_bytes(tmp_path):
+    header = (
+        "##fileformat=VCFv4.2\n"
+        "##contig=<ID=chr1,length=100>\n"
+        '##INFO=<ID=END,Number=1,Type=Integer,Description="End">\n'
+        '##INFO=<ID=Note,Number=1,Type=String,Description="Note">\n'
+        '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSample\n"
+    )
+    body = (
+        "chr1\t2\tblock\ta\t<NON_REF>\t.\tPASS\tEND=10;Note=aCgT\tGT\t0/0\n"
+        "chr1\t15\tbnd\tt\tc[chrRemote:20[,g,<ins:mobile>,*\t1.00\tPASS\tNote=t\tGT\t1|2\n"
+    )
+    expected = body.replace("\ta\t", "\tA\t").replace(
+        "\tt\tc[chrRemote:20[,g,", "\tT\tC[chrRemote:20[,G,"
+    )
+    source = tmp_path / "raw.g.vcf"
+    source.write_text(header + body, encoding="utf-8", newline="\n")
+    ref = write_fasta(tmp_path / "masked.fa", {"chr1": "a" * 100})
+    output = str(tmp_path / "cut.g.vcf.gz")
+    clip_gvcf(
+        bgzip_index(source), [PloidyInterval("chr1", 0, 100, 2)], str(ref), output
+    )
+    assert vcf_body(output) == body.encode()
+    short_csi = Path(output).with_suffix(".csi")
+    run_command(["tabix", "-C", "-p", "vcf", output])
+    Path(output + ".csi").replace(short_csi)
+
+    publish_gvcf(
+        output, output, Provenance(engine="test", version="1", quality_model="gq")
+    )
+
+    assert vcf_body(output) == expected.encode()
+    assert not short_csi.exists()
+    # Query the interior, not the POS: the index must cover the block's END.
+    indexed = run_command(["tabix", output, "chr1:9-9"], capture_output=True)
+    assert indexed.stdout == expected.splitlines(keepends=True)[0]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX mode bits and umask")
+@pytest.mark.parametrize(("vcf_mode", "short_index"), [(0o600, False), (0o644, True)])
+@pytest.mark.parametrize("no_xattr", [False, True], ids=["native-os", "no-xattr"])
+def test_1654_uppercase_rewrite_protects_staging_and_keeps_private_modes(
+    tmp_path, monkeypatch, vcf_mode, short_index, no_xattr
+):
+    source = tmp_path / "calls.vcf"
+    source.write_text(
+        "##fileformat=VCFv4.2\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        "chr1\t2\t.\ta\tc\t.\tPASS\t.\n",
+        newline="\n",
+    )
+    final = Path(bgzip_index(source))
+    index = Path(f"{final}.tbi")
+    final.chmod(vcf_mode)
+    index.chmod(0o600)
+    short = final.with_suffix(".tbi")
+    if short_index:
+        index.replace(short)
+    if no_xattr:
+        # A Linux caller simulation on macOS still uses macOS's actual os module.
+        monkeypatch.setattr(sys, "platform", "linux")
+        for name in ("getxattr", "setxattr", "removexattr"):
+            monkeypatch.delattr(os, name, raising=False)
+        # shutil selected its xattr implementation at import time on Linux.
+        monkeypatch.setattr(os, "listxattr", lambda *args, **kwargs: [], raising=False)
+    producer = """
+import gzip, stat, sys
+from pathlib import Path
+final = Path(sys.argv[1])
+staged, = set(final.parent.rglob('*.vcf.gz')) - {final}
+assert any(stat.S_IMODE(path.stat().st_mode) & 0o077 == 0
+           for path in (staged, staged.parent))
+with gzip.open(final, 'rb') as previous:
+    sys.stdout.buffer.write(previous.read())
+"""
+    mask = os.umask(0o022)
+    try:
+        publish_called_vcf(
+            str(final), stages=([sys.executable, "-c", producer, str(final)],)
+        )
+    finally:
+        os.umask(mask)
+    assert stat.S_IMODE(final.stat().st_mode) == vcf_mode
+    assert stat.S_IMODE(index.stat().st_mode) == 0o600
+    assert not short.exists()
+    queried = run_command(["tabix", final, "chr1:2-2"], capture_output=True)
+    assert queried.stdout == "chr1\t2\t.\tA\tC\t.\tPASS\t.\n"
+
+
+@pytest.mark.parametrize("index_alias", ["filesystem-case", "symlink", "hardlink"])
+def test_1654_mixed_case_sibling_keeps_shared_short_index(tmp_path, index_alias):
+    source = tmp_path / "calls.vcf"
+    body = "chr1\t2\t.\ta\tc\t.\tPASS\t.\n"
+    source.write_text(
+        "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" + body,
+        newline="\n",
+    )
+    final = Path(bgzip_index(source))
+    sibling = tmp_path / "CALLS.VCF.bgz"
+    os.link(final, sibling)
+    run_command(["tabix", "-C", "-p", "vcf", final])
+    index = Path(f"{final}.csi").rename(final.with_suffix(".csi"))
+    other_index = sibling.with_suffix(".csi")
+    if not other_index.exists():
+        if index_alias == "filesystem-case":
+            pytest.skip("test directory is case-sensitive")
+        if index_alias == "hardlink":
+            os.link(index, other_index)
+        else:
+            try:
+                other_index.symlink_to(index.name)
+            except OSError as exc:
+                if sys.platform != "win32":
+                    raise
+                pytest.skip(f"symlink creation unavailable: {exc}")
+    before = index.read_bytes()
+
+    with pytest.raises(WGSExtractError, match="share the index name"):
+        ensure_vcf_indexed(final)
+    with pytest.raises(WGSExtractError, match=r"CALLS\.VCF\.bgz shares .*\.csi"):
+        publish_called_vcf(str(final), source=str(final))
+
+    assert index.read_bytes() == other_index.read_bytes() == before
+    queried = run_command(["tabix", sibling, "chr1:2-2"], capture_output=True)
+    assert queried.stdout == body
+
+
+def test_1654_clair3_keeps_soft_masked_reference_blocks(tmp_path, clair3_gpu):
+    model = make_model(tmp_path, "custom")
+    plain = clair3_gpu.out
+    gpu_call(clair3_gpu, model, "--reference-evidence", "gvcf")
+    reads = clair3_gpu.reads
+    reads.ref = soft_mask_reference(reads.ref, tmp_path / "masked.fa", 900, 1100)
+    masked = clair3_gpu.out = tmp_path / "masked"
+    gpu_call(clair3_gpu, model, "--reference-evidence", "gvcf")
+
+    for name in ("clair3.vcf.gz", "clair3.g.vcf.gz"):
+        assert vcf_body(masked / name) == vcf_body(plain / name)
+    assert vcf_calls(masked / "clair3.vcf.gz", "chr1:900-1100") == reads.calls[:1]
+    assert state(masked / "clair3.g.vcf.gz", "chr1", 950) is State.CALLABLE_REFERENCE
 
 
 @pytest.mark.parametrize("bounded", [False, True])
@@ -182,7 +334,6 @@ def test_clair3_gvcf_cost_is_measured_and_reported_to_gpu_runs_863(
     slower on the CPU and 4.3x with --gpu. Preflight scales its time by that,
     and a --gpu run is told the CPU was faster there but still calls on the
     GPU."""
-    # The fake first: it skips on Windows, which linux_x86 would hide.
     request.getfixturevalue("fake_clair3")
     host = request.getfixturevalue("clair3_gpu") if gpu else None
     results = {
@@ -244,12 +395,10 @@ def test_a_clair3_partition_without_reads_reads_uncovered_863(sample, request):
     sys.platform == "win32",
     reason="Windows locks the half-written file instead of failing the write",
 )
-def test_a_gvcf_that_cant_be_written_reports_bcftools_error_863(sample, tmp_path):
-    """#1009 review: when bcftools can't write the cut gVCF (a full disk, or
+def test_a_gvcf_that_cant_be_written_reports_the_write_error_863(sample, tmp_path):
+    """#1009 review: when the cut gVCF can't be written (a full disk, or
     here a folder in its place), the error names the gVCF and carries
-    bcftools' own message, not a bare broken pipe."""
-    from wgsextract_cli.commands.vcf.caller_ploidy import PloidyInterval
-    from wgsextract_cli.commands.vcf.reference_evidence import clip_gvcf
+    the underlying message, not a bare broken pipe."""
 
     rows = ["##fileformat=VCFv4.2", "##contig=<ID=chr20,length=12000>"]
     rows.append("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts")
@@ -386,30 +535,12 @@ def test_clair3_missed_deletion_bases_arent_callable_reference_1028(tmp_path, re
     assert state(gvcf, "chr20", 2100) is State.CALLABLE_REFERENCE
 
 
-@pytest.fixture
-def parabricks_host(tmp_path, monkeypatch, ram):
-    """An x86-64 Linux GPU host (RTX 3090, 128 GB) whose pbrun is faked."""
-    import os
-    import platform
-
-    from tests.fake_tools import FakeParabricks
-    from wgsextract_cli.core.parabricks import DEFAULT_IMAGE
-
-    if sys.platform == "win32":
-        pytest.skip("Parabricks runs on Linux; fakes run by shebang")
-    monkeypatch.setattr(sys, "platform", "linux")
-    monkeypatch.setattr(platform, "machine", lambda: "x86_64")
-    ram(128 * 10**9)
-    host = FakeParabricks(tmp_path / "gpu", DEFAULT_IMAGE)
-    monkeypatch.setenv("PATH", f"{host.bin}{os.pathsep}{os.environ['PATH']}")
-    return host
-
-
+@pytest.mark.skipif(sys.platform == "win32", reason="Parabricks fakes run by shebang")
 @pytest.mark.parametrize("evidence", ["none", "gvcf"])
 @pytest.mark.parametrize("bounded", [False, True])
 @pytest.mark.parametrize("sex", ["Male", "Female"])
 def test_parabricks_deepvariant_calls_sex_chromosomes_in_ploidy_partitions_1058(
-    sample, parabricks_host, sex, bounded, evidence
+    sample, gpu, sex, bounded, evidence
 ):
     """Issue #1058: vcf deepvariant --gpu refused every whole genome, since
     a man's non-PAR chrX/chrY (and every chrM) isn't diploid. pbrun has
@@ -429,11 +560,9 @@ def test_parabricks_deepvariant_calls_sex_chromosomes_in_ploidy_partitions_1058(
     assert result.status == "ok", result.error
     runs = {
         "haploid" if "--haploid-contigs" in args else "diploid": intervals
-        for (_, args), intervals in zip(
-            parabricks_host.runs(), parabricks_host.intervals(), strict=True
-        )
+        for (_, args), intervals in zip(gpu.runs(), gpu.intervals(), strict=True)
     }
-    haploid_args = [a for _, a in parabricks_host.runs() if "--haploid-contigs" in a]
+    haploid_args = [a for _, a in gpu.runs() if "--haploid-contigs" in a]
     male = sex == "Male"
     if bounded:
         diploid = [("chr20", 499, 1500), ("chrX", PAR_START - 1, 11000)]

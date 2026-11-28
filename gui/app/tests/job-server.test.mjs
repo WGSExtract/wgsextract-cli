@@ -198,6 +198,26 @@ test("an action with a serverOperation runs as a job, with its progress in the o
   assert.doesNotMatch(output, /ran the command/);
 });
 
+test("#1591 a running CLI job server applies a changed network mode to the next job", async (t) => {
+  const bundle = await withBundle(t);
+  const script = path.join(bundle.bundleRoot, "run-wgsextract.sh");
+  await writeFile(script, 'exec "$@"\n');
+  await writeFile(path.join(bundle.bundleRoot, "run-wgsextract.ps1"), "$node, $rest = $args\n& $node @rest\nexit $LASTEXITCODE\n");
+  let mode = "full";
+  const jobServer = createJobServer({
+    command: { executable: script, arguments: [process.execPath, "{{bundleRoot}}/server.mjs"] },
+    startupTimeoutSeconds: 10,
+  }, bundle.bundleRoot, bundle.manager.runProcess, async () => mode);
+  const first = await run(bundle, action("quick", {}), jobServer);
+  const address = await jobServer.address();
+  mode = "low";
+  const second = await run(bundle, action("quick", {}), jobServer);
+
+  assert.match(first.output, /"network":"full"/);
+  assert.match(second.output, /"network":"low"/);
+  assert.equal(await jobServer.address(), address);
+});
+
 test("an action with resultCard asks the job server for the job's card; others don't", async (t) => {
   const bundle = await withBundle(t);
   const jobServer = bundle.startServer();

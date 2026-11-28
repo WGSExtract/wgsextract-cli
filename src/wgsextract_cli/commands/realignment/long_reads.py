@@ -31,6 +31,7 @@ from wgsextract_cli.core.utils import (
 )
 
 from .. import align as align_cmd
+from ..alignment.bonefish import verify_bonefish
 from .mapping import (
     _align,
     _align_step,
@@ -45,6 +46,7 @@ from .preparation import (
 from .resources import (
     _long_read_disk_requirements,
     _minimap2_needs,
+    _Needs,
     _require,
 )
 
@@ -146,7 +148,7 @@ def _realign_long_reads(
         _resume_alignment(
             journal, journal.decide(align_step), out_path, target, threads
         )
-        if not journal.dry_run:
+        if not journal.dry_run and selected_aligner == "minimap2":
             shutil.rmtree(out_path + ".chunks", ignore_errors=True)
         if job.keep_fastq and not journal.dry_run:
             if Path(fastq).is_file():
@@ -164,12 +166,14 @@ def _realign_long_reads(
     if journal.dry_run:
         journal.decide(_index_step(out_path))
         return
+    if selected_aligner == "bonefish":
+        verify_bonefish()
     cram_opt = input_cram_opt or _input_cram_reference(job)
     chunk_bytes = parse_size(job.chunk_size)
     chunking = _long_read_chunks(job, selected_aligner, chunk_bytes, outdir)
     plan, chunk_input = chunking or (None, None)
     workdir = Path(out_path + ".chunks")
-    if not plan and workdir.exists():
+    if selected_aligner == "minimap2" and not plan and workdir.exists():
         logging.info("Removing %s, left by an interrupted chunked run.", workdir)
         shutil.rmtree(workdir)
     # The FASTA alignment resolves (from the input's signature without
@@ -186,13 +190,15 @@ def _realign_long_reads(
         reference=reference if plan else None,
         # An interrupted run's chunks are kept or, if they can't be
         # resumed, deleted: either way, that space counts as free.
-        done_bytes=_tree_bytes(workdir),
+        done_bytes=_tree_bytes(workdir) if selected_aligner == "minimap2" else 0,
     )
     _require(
         job,
         disk,
         threads,
-        _minimap2_needs(job, [job.input], reference, threads, memory),
+        _minimap2_needs(job, [job.input], reference, threads, memory)
+        if selected_aligner == "minimap2"
+        else _Needs(),
     )
     # samtools fastq's -T lists tags; the reference needs --reference.
     decode = ["--reference", cram_opt[1]] if cram_opt else []
@@ -239,7 +245,8 @@ def _realign_long_reads(
     )
     # Only now that the align step is recorded: a run killed before keeps
     # the chunks' finished state, so its rerun doesn't realign them.
-    shutil.rmtree(workdir, ignore_errors=True)
+    if selected_aligner == "minimap2":
+        shutil.rmtree(workdir, ignore_errors=True)
     if is_url(job.input):
         # Downloaded by this run or an interrupted one, chunked or not.
         for index in index_files(job.input, outdir):

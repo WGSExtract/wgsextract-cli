@@ -7,18 +7,20 @@ globalThis.localStorage = {
   },
   setItem() {},
 };
-globalThis.window = {
+globalThis.window = Object.assign(new EventTarget(), {
   innerHeight: 900,
   setTimeout,
   clearTimeout,
-};
+});
 
 const { createInitialState, state } = await import("../dist/web/src/client/state.js");
 const { checkForUpdates, downloadUpdate, initializeTauriUpdater, installUpdate } = await import("../dist/web/src/client/tauri-updater.js");
+globalThis.fetch = async () => Response.json(state.networkSettings);
 
 function resetState() {
   Object.assign(state, createInitialState(), {
     applicationVersion: "1.0.0",
+    networkSettings: { consent: "accepted", privacyMode: false, checkForUpdatesAtLaunch: true, mode: "automatic", detectedCost: "unconstrained" },
   });
   delete globalThis.window.__TAURI__;
 }
@@ -46,6 +48,7 @@ test("dedupes concurrent updater checks", async () => {
   const first = checkForUpdates({ revealOnAvailable: true });
   const second = checkForUpdates({ revealOnAvailable: false });
 
+  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(callCount, 1);
   assert.equal(typeof first?.then, "function");
   assert.equal(typeof second?.then, "function");
@@ -105,6 +108,38 @@ test("skips re-download when update bytes are already cached", async () => {
   assert.equal(state.update.bytesRid, 9);
 });
 
+test("#1591 an update found on Wi-Fi waits for confirmation after the connection becomes metered", async (t) => {
+  resetState();
+  state.update.updateRid = 7;
+  state.update.status = "available";
+  t.mock.method(globalThis, "fetch", async () => Response.json({ ...state.networkSettings, detectedCost: "constrained" }));
+  const downloads = [];
+  setTauriMock(async (command) => {
+    downloads.push(command);
+    return { bytesRid: 8, downloadedBytes: 10 };
+  });
+
+  await downloadUpdate("auto");
+  assert.deepEqual(downloads, []);
+  assert.equal(state.update.status, "available");
+  await downloadUpdate();
+  assert.deepEqual(downloads, ["gfc_update_download"]);
+  assert.equal(state.update.status, "downloaded");
+});
+
+test("#1591 automatic download uses the new unrestricted connection after cached Low", async (t) => {
+  resetState();
+  state.networkSettings.detectedCost = "constrained";
+  state.update.updateRid = 7;
+  state.update.status = "available";
+  t.mock.method(globalThis, "fetch", async () => Response.json({ ...state.networkSettings, detectedCost: "unconstrained" }));
+  setTauriMock(async () => ({ bytesRid: 8, downloadedBytes: 10 }));
+
+  await downloadUpdate("auto");
+
+  assert.equal(state.update.status, "downloaded");
+});
+
 test("does not invoke install without both updater resources", async () => {
   resetState();
   let invoked = false;
@@ -125,16 +160,15 @@ test("#1052 Privacy mode keeps startup offline while subscribing to local update
   resetState();
   // The desktop shell asks for the startup check; Privacy mode overrides it.
   state.autoUpdate = true;
-  state.privacyMode = true;
+  state.networkSettings.privacyMode = true;
   let progressHandler;
   const originalSetTimeout = globalThis.window.setTimeout;
-  let scheduled = 0;
-  globalThis.window.setTimeout = () => { scheduled += 1; return 0; };
+  const pending = [];
+  const commands = [];
+  globalThis.window.setTimeout = (callback) => { pending.push(callback); return 0; };
   globalThis.window.__TAURI__ = {
     core: {
-      invoke: async () => {
-        throw new Error("scheduled check should not run");
-      },
+      invoke: async (command) => { commands.push(command); return {}; },
     },
     event: {
       listen: async (event, handler) => {
@@ -151,7 +185,9 @@ test("#1052 Privacy mode keeps startup offline while subscribing to local update
 
     assert.equal(state.update.supported, true);
     assert.equal(typeof progressHandler, "function");
-    assert.equal(scheduled, 0, "Privacy mode must not schedule an update server request");
+    for (const callback of pending.splice(0)) callback();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(commands, []);
     assert.equal(state.update.checked, false);
 
     progressHandler({
@@ -212,7 +248,7 @@ async function runStartup(tag, invoke) {
   }
 }
 
-test("an installed app checks for updates at startup unless Privacy mode is on (0.8.9 never offered 0.8.10)", async () => {
+test("#1591 an installed app checks at startup when its launch setting is on", async () => {
   resetState();
   state.autoUpdate = true;
   const commands = [];
@@ -225,6 +261,16 @@ test("an installed app checks for updates at startup unless Privacy mode is on (
   assert.equal(state.update.status, "available");
   assert.equal(state.update.availableVersion, "0.8.10");
   assert.equal(state.update.popoverVisible, true);
+});
+
+test("#1591 a scheduled update check honors Off saved in another window", async (t) => {
+  resetState();
+  state.autoUpdate = true;
+  t.mock.method(globalThis, "fetch", async () => Response.json({ ...state.networkSettings, mode: "off" }));
+  const commands = [];
+  await runStartup("startup-off-elsewhere", async (command) => { commands.push(command); });
+  assert.deepEqual(commands, []);
+  assert.equal(state.update.checked, false);
 });
 
 test("a failed startup update check leaves no error button behind", async () => {
@@ -262,7 +308,7 @@ test("turning on Privacy mode before the delayed startup check fires cancels it"
     updater.initializeTauriUpdater();
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(pending.length, 1);
-    state.privacyMode = true;
+    state.networkSettings.privacyMode = true;
     pending[0]();
     await new Promise((resolve) => setImmediate(resolve));
   } finally {

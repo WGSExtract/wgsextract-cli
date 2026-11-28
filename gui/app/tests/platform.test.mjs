@@ -243,13 +243,14 @@ test("Tauri grants IPC only to the exact backend origin and only the commands th
     "core:event:allow-unlisten",
     "allow-gfc-report-rendered",
     "allow-gfc-update-check",
+    "allow-gfc-update-check-from-menu",
     "allow-gfc-update-download",
     "allow-gfc-update-install",
   ]);
   assert.doesNotMatch(main, /updater:default/);
   await assert.rejects(readFile(new URL("../web/packagers/tauri/capabilities/main.json", import.meta.url)), { code: "ENOENT" });
   assert.equal(config.app.security.capabilities, undefined);
-  for (const command of ["gfc_report_rendered", "gfc_update_check", "gfc_update_download", "gfc_update_install"]) {
+  for (const command of ["gfc_report_rendered", "gfc_update_check", "gfc_update_check_from_menu", "gfc_update_download", "gfc_update_install"]) {
     assert.match(buildScript, new RegExp(`"${command}"`));
   }
 });

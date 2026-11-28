@@ -45,28 +45,50 @@ RUN_RECORDS = {Path("state/last-run.json"), Path("state/last-failed-run.json")}
 Stamp = tuple[int, int, int, int, int]
 
 
-def entries(path: Path, excluded: set[Path]) -> Iterator[os.DirEntry[str]]:
+def entries(
+    path: Path, excluded: set[Path], unreadable: set[Path] | None = None
+) -> Iterator[os.DirEntry[str]]:
     todo = [path]
     while todo:
         directory = todo.pop()
-        with os.scandir(directory) as children:
-            for entry in children:
-                child = Path(entry.path)
-                if child in excluded:
-                    continue
-                if entry.is_dir(follow_symlinks=False):
-                    todo.append(child)
-                else:
-                    yield entry
+        try:
+            with os.scandir(directory) as children:
+                for entry in children:
+                    child = Path(entry.path)
+                    if child not in excluded:
+                        if entry.is_dir(follow_symlinks=False):
+                            todo.append(child)
+                        else:
+                            yield entry
+        except PermissionError:
+            if unreadable is None:
+                raise
+            unreadable.add(directory)
 
 
 def dependency_links(
     root: Path,
-    locations: set[Path],
+    trees: list[Path],
     paths: set[Path],
-    hooks: Iterable[tuple[Path, Path]],
+    hook_paths: Callable[[Path], Iterable[Path]],
+    store: Path,
+    shared_alias: Callable[[Path, Path], Path | None],
+    unreadable: set[Path],
 ) -> set[Path]:
     blocked = set()
+    locations = {root}
+    if store.is_dir() and not store.is_relative_to(root):
+        locations.add(store)
+    shared_aliases = {}
+    hooks: list[tuple[Path, Path]] = []
+    for location in trees:
+        if not location.is_dir():
+            continue
+        if not location.is_relative_to(root):
+            locations.add(location)
+        if (alias := shared_alias(location, store)) is not None:
+            shared_aliases[location / "reference"] = alias
+        hooks.extend((location, path) for path in hook_paths(location))
 
     def check_target(link: Path, target: Path, own: Path | None = None) -> None:
         lexical, resolved = Path(os.path.abspath(target)), target.resolve()
@@ -74,6 +96,8 @@ def dependency_links(
             if path == own:
                 continue
             inside = link.is_relative_to(path)
+            if inside and shared_aliases.get(link) == resolved:
+                continue
             if inside != resolved.is_relative_to(path) or (
                 not inside
                 and (
@@ -94,33 +118,52 @@ def dependency_links(
 
     common = root / ".git"
     for location in locations:
-        for entry in entries(location, set()):
-            check_link(entry)
+        for entry in entries(location, set(), unreadable):
             link = Path(entry.path)
-            if (
-                entry.is_symlink()
-                and link.is_relative_to(common)
-                and link != common / "hooks"
-                and entry.is_dir(follow_symlinks=True)
-            ):
-                # The ordinary walk does not follow directory aliases. A
-                # linked metadata directory could hide further dependencies.
-                return paths
+            try:
+                check_link(entry)
+                if (
+                    entry.is_symlink()
+                    and link.is_relative_to(common)
+                    and link != common / "hooks"
+                    and entry.is_dir(follow_symlinks=True)
+                ):
+                    # A linked metadata directory could hide further dependencies.
+                    blocked.update(paths)
+            except PermissionError:
+                unreadable.add(link)
 
     hook_dirs = set()
     for checkout, hooks_path in hooks:
-        check_target(root, hooks_path, own=checkout)
         try:
+            check_target(root, hooks_path, own=checkout)
             directory = hooks_path.resolve(strict=True)
+            if directory.is_dir():
+                hook_dirs.add(directory)
         except (FileNotFoundError, NotADirectoryError):
             continue
-        if directory.is_dir():
-            hook_dirs.add(directory)
+        except PermissionError:
+            unreadable.add(hooks_path)
     for directory in hook_dirs:
-        with os.scandir(directory) as children:
-            for entry in children:
-                check_link(entry)
+        try:
+            with os.scandir(directory) as children:
+                for entry in children:
+                    check_link(entry)
+        except PermissionError:
+            unreadable.add(directory)
     return blocked
+
+
+def safe_directory(path: Path, mode: int = 0o755) -> None:
+    path.mkdir(mode=mode, exist_ok=True)
+    info = path.lstat()
+    if (
+        not stat.S_ISDIR(info.st_mode)
+        or info.st_uid != os.geteuid()
+        or info.st_mode & 0o022
+        or (mode == 0o700 and info.st_mode & 0o077)
+    ):
+        raise ValueError(f"Unsafe output directory: {path}")
 
 
 def stamp(info: os.stat_result) -> Stamp:
@@ -594,6 +637,7 @@ def inventory(
     tracked: set[Path],
     disposable: tuple[tuple[str, ...], ...] = (),
     ignored: Callable[[set[Path]], set[Path]] | None = None,
+    shared_alias: Path | None = None,
 ) -> Inventory:
     inventory = Inventory()
     bytecode: dict[Path, Path] = {}
@@ -630,6 +674,13 @@ def inventory(
     for entry in entries(path, excluded | {path / ".git"}):
         relative = Path(entry.path).relative_to(path)
         if relative in tracked:
+            continue
+        if (
+            relative == Path("reference")
+            and shared_alias is not None
+            and entry.is_symlink()
+            and Path(entry.path).resolve() == shared_alias
+        ):
             continue
         if entry.is_file(follow_symlinks=False) and (
             source := bytecode_source(relative)
@@ -717,14 +768,23 @@ def prune_cache(path: Path, name: str, expected: Stamp) -> None:
     if not shutil.rmtree.avoids_symlink_attacks:
         raise OSError("Safe cache removal is unavailable")
     relative = Path(name)
-    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     with ExitStack() as stack:
-        parent = os.open(path, flags)
-        stack.callback(os.close, parent)
-        for part in relative.parts[:-1]:
-            parent = os.open(part, flags, dir_fd=parent)
-            stack.callback(os.close, parent)
+        parent = open_parent(path, relative, stack)
         info = os.stat(relative.name, dir_fd=parent, follow_symlinks=False)
         if not stat.S_ISDIR(info.st_mode) or stamp(info) != expected:
             raise OSError(f"Cache changed before removal: {name}")
         shutil.rmtree(Path("/proc/self/fd") / str(parent) / relative.name)
+
+
+def prune_output(path: Path, relative: Path, expected: Stamp) -> None:
+    with ExitStack() as stack:
+        parent = open_parent(path, relative, stack)
+        info = os.stat(relative.name, dir_fd=parent, follow_symlinks=False)
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_uid != os.geteuid()
+            or info.st_nlink != 1
+            or stamp(info) != expected
+        ):
+            raise OSError(f"Disposable output changed before removal: {relative}")
+        os.unlink(relative.name, dir_fd=parent)

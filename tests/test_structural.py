@@ -15,10 +15,13 @@ import pytest
 
 from tests.fake_tools import only_tools, python_tool, require_bare_name_fakes
 from tests.htslib_helpers import (
+    caller_output_names,
     needs_htslib,
     needs_tools,
     run_wgsextract,
     sam_to_bam,
+    soft_mask_reference,
+    vcf_body,
     write_fasta,
 )
 from wgsextract_cli import api
@@ -117,6 +120,17 @@ def _combined_call(bam, ref, out, region, *, types="sv", check=True, **options):
 
 
 @needs_delly
+def test_1654_delly_keeps_sv_records_on_a_soft_masked_reference(tmp_path):
+    bam, ref = _sample(tmp_path)
+    masked = soft_mask_reference(ref, tmp_path / "masked.fa", 29_000, 33_000)
+    for label, reference in [("plain", ref), ("masked", masked)]:
+        _run("sv", bam, reference, tmp_path / label, "-r", "chr1:20000-40000")
+    masked_vcf = tmp_path / "masked" / "sv.vcf.gz"
+    assert _near_deletion(_records(masked_vcf, "chr1:29000-33000"))
+    assert vcf_body(masked_vcf) == vcf_body(tmp_path / "plain" / "sv.vcf.gz")
+
+
+@needs_delly
 @pytest.mark.parametrize("region", [None, "chr1:20000-40000"])
 def test_delly_sv_finds_the_deletion(tmp_path, region):
     bam, ref = _sample(tmp_path)
@@ -125,7 +139,7 @@ def test_delly_sv_finds_the_deletion(tmp_path, region):
     records = _records(out / "sv.vcf.gz")
     assert len(records) == 1 and _near_deletion(records)
     # The BCF and any region BAM are gone.
-    assert sorted(p.name for p in out.iterdir()) == ["sv.vcf.gz", "sv.vcf.gz.tbi"]
+    assert caller_output_names(out) == ["sv.vcf.gz", "sv.vcf.gz.tbi"]
 
 
 @needs_delly
@@ -332,7 +346,7 @@ def test_delly_cnv_finds_the_deletion_and_takes_a_ploidy(tmp_path, caplog):
     assert delly[:2] == ["delly", "cnv"] and delly[delly.index("-y") + 1] == "2"
     assert "Ignoring --map" in caplog.text
     assert _near_deletion(_records(out / "cnv.vcf.gz"))
-    assert sorted(p.name for p in out.iterdir()) == ["cnv.vcf.gz", "cnv.vcf.gz.tbi"]
+    assert caller_output_names(out) == ["cnv.vcf.gz", "cnv.vcf.gz.tbi"]
 
 
 @needs_delly
@@ -487,7 +501,7 @@ def test_pacbio_runs_pbsv_discover_then_call(tmp_path, long_read):
     assert call[:4] == ["pbsv", "call", "-j", "1"] and "--ccs" in call
     assert call[-3] == ref
     assert _records(out / "pbsv.vcf.gz") == [("chr1", "30000", "32000")]
-    assert sorted(p.name for p in out.iterdir()) == ["pbsv.vcf.gz", "pbsv.vcf.gz.tbi"]
+    assert caller_output_names(out) == ["pbsv.vcf.gz", "pbsv.vcf.gz.tbi"]
 
 
 @needs_htslib
@@ -510,7 +524,7 @@ def test_pbsv_calls_a_region_against_an_uncompressed_reference(tmp_path, long_re
     # pbsv call can't read .fa.gz: it got a plain FASTA, since removed.
     assert call["reference"] == ">"
     assert not Path(call["argv"][-3]).exists()
-    assert sorted(p.name for p in out.iterdir()) == ["pbsv.vcf.gz", "pbsv.vcf.gz.tbi"]
+    assert caller_output_names(out) == ["pbsv.vcf.gz", "pbsv.vcf.gz.tbi"]
 
 
 @needs_htslib
@@ -552,14 +566,12 @@ def test_pacbio_falls_back_to_sniffles_without_pbsv(tmp_path, request, pacbio):
 @needs_htslib
 def test_sniffles_takes_a_region_as_a_bed_file(tmp_path, long_read):
     callers, bam, ref = long_read
-    _run("sv", bam, ref, tmp_path / "out", "--caller", "sniffles", "--region", "chr1")
+    out = tmp_path / "out"
+    _run("sv", bam, ref, out, "--caller", "sniffles", "--region", "chr1")
     # Sniffles2 --regions takes a BED file, not a region string.
     (run,) = callers.runs
     assert run["bed"] == "chr1\t0\t60000\n"
-    assert sorted(p.name for p in (tmp_path / "out").iterdir()) == [
-        "sniffles.vcf.gz",
-        "sniffles.vcf.gz.tbi",
-    ]
+    assert caller_output_names(out) == ["sniffles.vcf.gz", "sniffles.vcf.gz.tbi"]
 
 
 @needs_htslib

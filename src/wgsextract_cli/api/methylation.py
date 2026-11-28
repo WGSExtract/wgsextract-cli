@@ -17,7 +17,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
-from wgsextract_cli.core.methylation_annotations import BUILDS, PRESETS
+from wgsextract_cli.core.methylation_annotations import BUILDS, IMPRINTED_DMRS, PRESETS
 from wgsextract_cli.core.paths import absolute_path, append_suffix
 from wgsextract_cli.core.results import CommandResult
 from wgsextract_cli.core.table_writer import FORMATS, table_format_type
@@ -102,7 +102,7 @@ def pileup(
 
 @dataclass(frozen=True, kw_only=True)
 class MethylationRegionsParams(Params):
-    """Summarize pooled or haplotype-split CpG calls over RefSeq promoters or UCSC islands."""
+    """Summarize pooled or haplotype-split CpG calls over annotated regions."""
 
     COMMAND = "methylation regions"
 
@@ -119,7 +119,8 @@ class MethylationRegionsParams(Params):
     outdir: Path | None = outdir_param()
     build: str = param(choices=BUILDS, help="Assembly of both input and FASTA.")
     preset: str = param(
-        choices=PRESETS, help="RefSeq promoters or UCSC masked CpG islands."
+        choices=PRESETS,
+        help="RefSeq promoters, UCSC masked CpG islands, or research-only imprinted DMRs (hg38 only).",
     )
     upstream: int = param(
         2000, minimum=0, help="Promoter bases upstream of the TSS (default: 2000)."
@@ -167,6 +168,12 @@ class MethylationRegionsParams(Params):
 
     def __post_init__(self) -> None:
         super().__post_init__()
+        if self.preset == IMPRINTED_DMRS and self.build != "hg38":
+            raise UsageError(
+                "--preset imprinted-dmrs requires GRCh38: use --build hg38 with "
+                "GRCh38 input and its matching FASTA, or choose a different preset. "
+                "Coordinates are not lifted over."
+            )
         alignment = self.input.suffix.lower() in (".bam", ".cram")
         if self.partition_hp and not alignment:
             raise UsageError(

@@ -161,6 +161,10 @@ impl BackendProcess {
             )
             .env("GFC_NATIVE_PICKER_PORT", launch.picker_port.to_string())
             .stdin(Stdio::null());
+        #[cfg(target_os = "macos")]
+        command
+            .arg("--network-cost-executable")
+            .arg(env::current_exe()?);
         match backend_log(launch.paths.backend_log.as_deref()) {
             Some((stdout, stderr)) => command.stdout(stdout).stderr(stderr),
             None => command.stdout(Stdio::null()).stderr(Stdio::null()),

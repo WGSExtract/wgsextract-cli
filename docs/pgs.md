@@ -220,7 +220,7 @@ its similarity, the empirical percentile and Z, `z_norm1`, `z_norm2`,
 manifest's metrics add `percentile` and `z_adjusted`; the TSV adds
 `z_adjusted` and `percentile_status`.
 
-**Validation** (#617, on lin-big, 2026-11-14, for version 1's 11 scores; version 2
+**Validation** (#617, on Linux x86-64, 2026-11-14, for version 1's 11 scores; version 2
 copies ten of them unchanged):
 
 - **Same rules as your sample.** For 3 reference samples and all 11 scores,

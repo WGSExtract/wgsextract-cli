@@ -44,6 +44,7 @@ from wgsextract_cli.core.variant_files import (
     publish_indexed_vcf,
     verify_paths_exist,
 )
+from wgsextract_cli.core.vcf_output import uppercase_vcf
 
 from .basic import require_vcf_input, vcf_input_handler
 from .prepare_header import (
@@ -238,17 +239,25 @@ def _rewrite(source: str, job: _Rewrite, staged: Path, work: Path) -> NormReport
         )  # fmt: skip
         norm_stage = len(filters)
     reader = ["bcftools", "view", "--no-version"]
-    if job.sort or job.normalize is not None:
-        sink = ["bcftools", "sort", "-T", str(work / "sort"), "-Oz",
-                "-o", str(staged)]  # fmt: skip
+    if job.normalize is not None:
+        sinks = uppercase_vcf(
+            ["bcftools", "sort", "-T", str(work / "sort")],
+            str(staged),
+            source="-",
+            threads=job.threads,
+        )
     else:
-        sink = ["bcftools", "view", "--no-version", "--threads", job.threads,
-                "-Oz", "-o", str(staged)]  # fmt: skip
+        sink = (
+            ["bcftools", "sort", "-T", str(work / "sort")]
+            if job.sort
+            else ["bcftools", "view", "--no-version", "--threads", job.threads]
+        )
+        sinks = [[*sink, "-Oz", "-o", str(staged), "-" if filters else source]]
     if filters:
         reader += ["-Ov" if job.header.changed else "-Ou", source]
-        stages = [reader, *filters, [*sink, "-"]]
+        stages = [reader, *filters, *sinks]
     else:
-        stages = [[*sink, source]]
+        stages = sinks
     err = work / "norm.err"
     run_pipeline(
         stages,
@@ -320,7 +329,7 @@ def run_prepare(params: VcfPrepareParams) -> None:
         if ref is not None:
             check_header_build(header, ref.lengths, "--ref")
         logging.info("Reading %s...", input_vcf)
-        scan = scan_records(input_vcf, work)
+        scan = scan_records(input_vcf, work, check_case=params.normalize)
         plan = plan_header(header, scan, ref.lengths if ref else None)
         if ref is not None:
             refuse_records_beyond_reference(scan, plan, ref.lengths)
@@ -335,6 +344,7 @@ def run_prepare(params: VcfPrepareParams) -> None:
         normalize = params.normalize and (
             rewrite
             or scan.multiallelic > 0
+            or scan.lowercase_alleles
             or (report is not None and report.counts.get("realigned", 0) > 0)
         )
         staged = Path(staging, "prepared.vcf.gz")

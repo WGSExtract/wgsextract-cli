@@ -8,8 +8,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar, cast, overload
 
+from wgsextract_cli.core._context_state import ConfigState, execution
 from wgsextract_cli.core.errors import WGSExtractError
-from wgsextract_cli.core.execution_context import ConfigState, bound, current
 from wgsextract_cli.core.workspace_activity import relocated_config_path, workspace_use
 
 if TYPE_CHECKING:
@@ -189,7 +189,12 @@ _load_lock = threading.RLock()
 
 def _state() -> ConfigState:
     """The configuration of the running operation."""
-    return current().config or _PROCESS_CONFIG
+    context = execution.get()
+    return (
+        context.config
+        if context is not None and context.config is not None
+        else _PROCESS_CONFIG
+    )
 
 
 def _resolve(path: str | os.PathLike[str] | None) -> Path | None:
@@ -207,9 +212,15 @@ def config_args(*, keep_awake: bool | None = None) -> list[str]:
     override, the temporary folder and the folders it may read (a server
     job's), without changing default argv."""
     from wgsextract_cli.core import read_scope
+    from wgsextract_cli.core.execution_context import current
 
     selected = _state().path
     args = ["--config", str(selected)] if selected else []
+    context = current()
+    if context.network_mode is not None:
+        args += ["--network", context.network_mode]
+    if context.allow_large_download:
+        args.append("--allow-large-download")
     if keep_awake or (keep_awake is False and settings.get("keep_awake", False)):
         args.append("--keep-awake" if keep_awake else "--no-keep-awake")
     # An internal step's card would describe the step; its caller writes its own.
@@ -428,6 +439,8 @@ def snapshot_config() -> ConfigState:
 def select_process_config(path: str | os.PathLike[str] | None) -> None:
     """Select and load the process's config.toml (the user's when None), even
     from inside a ``scoped_config`` or a call running on its own snapshot."""
+    from wgsextract_cli.core.execution_context import bound
+
     with _load_lock, bound(config=None):
         set_config_path(path)
         reload_settings()
@@ -439,6 +452,8 @@ def scoped_config(path: str | os.PathLike[str] | None = None) -> Iterator[None]:
     from ``path`` (the user's config.toml when None), leaving the process's
     and other threads' settings alone. Raises ``WGSExtractError`` for an
     invalid file."""
+    from wgsextract_cli.core.execution_context import bound
+
     # Unlike reload_settings, this leaves the tool caches: they are shared
     # with the calls running beside this one and don't depend on settings.
     with bound(config=ConfigState(path=_resolve(path))):
@@ -504,6 +519,8 @@ def settings_from(values: Mapping[str, object]) -> Settings:
 def settings_suspended() -> Iterator[None]:
     """Run with no settings, so code sees only its built-in defaults; the
     loaded settings come back afterwards."""
+    from wgsextract_cli.core.execution_context import bound
+
     # Loaded, so ensure_settings_loaded doesn't refill them.
     with bound(config=ConfigState(path=_state().path, loaded=True)):
         yield

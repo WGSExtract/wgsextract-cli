@@ -23,10 +23,8 @@ ENTRIES: dict[str, CommandHelp] = {
         "wgsextract vcf gatk --input sample.cram",
     ),
     "vcf deepvariant": _h(
-        "deepvariant.vcf.gz (+ .tbi) and deepvariant.vcf.gz.steps.json; with "
-        "--reference-evidence gvcf also deepvariant.g.vcf.gz (+ .tbi); until "
-        "it finishes, the stages' work in .deepvariant.work, where a rerun "
-        "resumes.",
+        "deepvariant.vcf.gz (+ .tbi), deepvariant.vcf.gz.steps.json; optional "
+        "deepvariant.g.vcf.gz (+ .tbi). Resume work: .deepvariant.work.",
         "wgsextract vcf deepvariant --input sample.cram",
         "wgsextract vcf deepvariant --input hifi.bam --pacbio",
         "wgsextract vcf deepvariant --input sample.cram --force-step call_variants",
@@ -84,8 +82,9 @@ ENTRIES: dict[str, CommandHelp] = {
     ),
     "vcf compare": _h(
         "compare.summary.json and compare.summary.tsv (or .parquet); "
-        "optional compare.variants table and indexed compare.anchor.vcf.gz.",
+        "optional per-allele table, indexed anchor VCF, and indexed two-callset VCF partitions.",
         "wgsextract vcf compare --callset a=caller-a.vcf.gz --callset b=caller-b.vcf.gz --ref GRCh38.fa",
+        "wgsextract vcf compare --callset a=caller-a.vcf.gz --callset b=caller-b.vcf.gz --ref GRCh38.fa --atomize --emit-partition-vcfs --outdir comparison",
         "wgsextract vcf compare --mode unique --callset child=child.vcf.gz --callset parent=parent.g.vcf.gz --include child --exclude parent --reference-evidence gvcf --emit-vcf",
     ),
     "vcf callability": _h(
@@ -117,6 +116,10 @@ ENTRIES: dict[str, CommandHelp] = {
     "vcf pharmgkb": _h(
         _ANNOTATED.format(name="pharmgkb"),
         f"wgsextract vcf pharmgkb {_VCF_IN}",
+    ),
+    "vcf regulatory": _h(
+        _ANNOTATED.format(name="regulatory"),
+        f"wgsextract vcf regulatory {_VCF_IN}",
     ),
     "vcf phylop": _h(
         _SCORED.format(name="phylop"),

@@ -11,7 +11,7 @@ use std::{
     time::Instant,
 };
 
-use app_update::native_dialog::check_for_updates;
+use app_update::native_dialog::gfc_update_check_from_menu;
 use app_update::{
     env_duration_seconds, env_flag, env_flag_or, gfc_update_check, gfc_update_download,
     gfc_update_install, AUTO_ACCEPT_UPDATE_ENV, AUTO_UPDATE_ACTION_DELAY_SECONDS_ENV,
@@ -27,11 +27,13 @@ mod app_update;
 mod backend;
 mod menu;
 mod native_picker;
+#[cfg(target_os = "macos")]
+mod network_cost;
 mod update_e2e_overlay;
 
 use menu::{
-    app_menu, app_name, request_about, request_load_bundle, ABOUT_MENU_ID,
-    CHECK_FOR_UPDATES_MENU_ID, LOAD_BUNDLE_MENU_ID,
+    app_menu, app_name, request_about, request_check_for_updates, request_load_bundle,
+    ABOUT_MENU_ID, CHECK_FOR_UPDATES_MENU_ID, LOAD_BUNDLE_MENU_ID,
 };
 use native_picker::start_native_picker_listener;
 
@@ -54,6 +56,12 @@ fn gfc_report_rendered(clock: tauri::State<'_, StartupClock>, page_ms: f64) {
 }
 
 fn main() {
+    #[cfg(target_os = "macos")]
+    if env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--network-cost")) {
+        network_cost::print_snapshot();
+        return;
+    }
+
     #[cfg(unix)]
     unsafe {
         libc::signal(
@@ -75,13 +83,14 @@ fn main() {
             gfc_report_rendered,
             gfc_update_check,
             gfc_update_download,
-            gfc_update_install
+            gfc_update_install,
+            gfc_update_check_from_menu
         ])
         .menu(app_menu)
         .on_menu_event(|app, event| {
             match event.id().as_ref() {
                 ABOUT_MENU_ID => request_about(app),
-                CHECK_FOR_UPDATES_MENU_ID => check_for_updates(app.clone()),
+                CHECK_FOR_UPDATES_MENU_ID => request_check_for_updates(app),
                 LOAD_BUNDLE_MENU_ID => request_load_bundle(app),
                 app_uninstall::UNINSTALL_MENU_ID => app_uninstall::request_uninstall(app),
                 _ => {}
@@ -125,13 +134,13 @@ fn main() {
                     .permission("core:event:allow-unlisten")
                     .permission("allow-gfc-report-rendered")
                     .permission("allow-gfc-update-check")
+                    .permission("allow-gfc-update-check-from-menu")
                     .permission("allow-gfc-update-download")
                     .permission("allow-gfc-update-install"),
             )?;
             let overlay_script = update_e2e_overlay::script(&application_name, &application_version);
-            // Release builds check for updates at startup unless the user turns on Privacy mode (the
-            // page skips the check) or GFC_TAURI_AUTO_UPDATE=0 (tests that must stay offline). Debug
-            // builds check only when GFC_TAURI_AUTO_UPDATE=1 says so.
+            // The page applies network consent, the launch setting and Privacy mode. By default
+            // only release builds support checks at startup; this override is for testing.
             let auto_update = env_flag_or(AUTO_UPDATE_ENV, !cfg!(debug_assertions));
             let auto_accept_update = env_flag(AUTO_ACCEPT_UPDATE_ENV);
             let auto_update_delay_seconds =

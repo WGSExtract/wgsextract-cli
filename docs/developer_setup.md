@@ -78,6 +78,75 @@ benchmark inputs and outputs out of Photos libraries and Spotlight-indexed
 folders. Check volume indexing with `mdutil -s /` and thermal pressure with
 `pmset -g therm` before timing; wait for indexing and throttling to settle.
 
+### Long-run benchmark drivers
+
+Use `scripts.longrun.LongRun` from a driver in `scratch/`. It needs Python
+3.10+ on Linux (including WSL) or macOS, and can run scripts with macOS's
+stock Bash. It does not need `/usr/bin/time`. Put each run in its own
+gitignored `out/` directory on an SSD.
+
+For example, from the checkout root, run `python -m scratch.bench slice`
+before `python -m scratch.bench full`. In `scratch/bench.py`:
+
+```python
+import argparse
+from pathlib import Path
+
+from scripts.longrun import LongRun
+
+parser = argparse.ArgumentParser()
+parser.add_argument("mode", choices=("slice", "full"))
+mode = parser.parse_args().mode
+out = Path("out/bench")
+root = out / mode
+with LongRun(root, name="bench-123", target="wgsextract-cli") as run:
+    reference = Path("out/shared/reference.dict")
+    pin = Path("scratch/reference.dict.sha256").read_text().strip()
+    run.check_sha256(reference, pin)
+    run.check_reference(
+        Path("out/shared/reads.cram"), reference, dictionary=True
+    )
+    if mode == "full":
+        run.require_slice(out / "slice")
+    run.stage(mode, ["bash", "scratch/benchmark.sh", mode, str(root)])
+```
+
+- **Check inputs before staging or resuming.** Use a SHA-256 from a
+  trusted source, not a pin computed from the just-downloaded file.
+  `check_reference` uses `samtools view -H` on a local CRAM and checks
+  every `@SQ` name and M5. Pass a pinned `samtools dict` file to verify
+  before staging a large FASTA, or pass a local FASTA without
+  `dictionary=True` to generate the dictionary in place. Still verify
+  that the FASTA you actually use matches the pin. For remote sources,
+  opt in explicitly and check the source version or checksum in the
+  driver; the helper never fetches inputs.
+- **Size first.** Have the slice command run the same workflow on 1–2%
+  of the data. Review `slice/metrics.json` for wall time and peak RSS
+  before estimating the full run; measure peak temp disk and output
+  size in the benchmark itself. RSS is the OS-reported high-water
+  mark for the stage command, not simultaneous use across a process
+  tree. Record slice measurements and full-run estimates on the issue.
+- **Reserve resources and exercise the alert.** Launch heavy work with
+  `agent-coord run` and size the lease from the slice. If the driver
+  has already started outside a lease and needs registering, call
+  `run.hold("--cores", "2", "--mem", "4G")` inside the context; it
+  registers `driver.pid` with the coordinator but does not cap or
+  queue the job. On the target host, smoke-test both a valid run and
+  an intentional missing input. The exit alert names the driver,
+  host, step, exit code and log. If `agent-coord` cannot send, check
+  the launcher's stderr. Keep an external watcher for power loss or
+  `SIGKILL`, which cannot send an exit alert.
+- **Resume deliberately.** Use foreground stage commands that validate
+  their outputs before returning zero and can retry after partial
+  writes. For power-loss recovery, have each command sync its outputs
+  and their directories before returning. The helper appends `stage.log`
+  and syncs `metrics.json` before atomically publishing and syncing
+  `PASS`. The driver updates `handoff.md` for the watcher and holds
+  an OS lock on the run directory. Rerun the same driver in the same
+  directory to skip passed stages. Use a new directory if inputs,
+  commands or parameters change; a `PASS` marker does not fingerprint
+  them or revalidate outputs.
+
 ## Make a change
 
 ```bash
@@ -411,6 +480,26 @@ The same guard runs in pre-commit, PR/main lint and exact-head generic
 certification. It uses no network, extra dependencies or environment settings.
 For a separate checkout, use the run-specific `--root`/`--baseline` arguments.
 
+## Network access in new features
+
+Keep the CLI predictable for scripts, server jobs and the desktop app. Use
+local files and caches by default, including in prerequisite checks and
+subprocesses. If public data is missing, name it and point to `--download`
+or a dedicated install command. Respect the CLI's network mode in addition
+to the operation's own opt-in: `low` requires `--allow-large-download`
+for bulk transfers, and `off` blocks outbound operations. A public-data download
+opt-in never permits sending sample files, genotypes or variant coordinates
+to a server. Ask separately and disclose the data and destination before
+the request.
+
+The desktop app handles the prompts and passes the appropriate CLI flags.
+Keep startup requests behind the first-launch choice and the relevant
+**Settings → Network & Privacy** controls. After that choice, distinguish
+automatic activity from actions the user explicitly requests. When adding
+a network path, test that the default does not try DNS or connect, and
+that an allowed request only sends the disclosed data. See the [CLI
+privacy guide](privacy.md) and [desktop privacy guide](../gui/docs/privacy.md).
+
 ## Write tests
 
 A good test fails when the behaviour a user relies on breaks, and survives a refactor that keeps that behaviour.
@@ -502,6 +591,12 @@ apply saves its exact commit locally under
 `refs/worktree-cleanup/detached/<head>` so even an unmerged PR tip remains
 recoverable without GitHub. The report gives the recovery ref; for example,
 `git worktree add --detach scratch/recovered <ref>` restores the checkout.
+
+New worktrees on a host with [shared certification references](ci_routing.md#writer-self-certification)
+can use `just certify-setup --link-reference` instead of copying a reference
+directory. The linked library lives outside the worktree; cleanup still
+blocks removal when a symlink from the store or another checkout points into
+the worktree being removed.
 A detached checkout with an in-progress Git operation or older commits
 recoverable only from its HEAD reflog is retained.
 The inspector is restricted to the same direct children of `scratch/`;
@@ -525,6 +620,9 @@ Do not start work in an eligible checkout during cleanup. Symlinks are checked
 in this repository and its registered worktrees, including shared Git
 metadata and each checkout's effective `core.hooksPath`. If a symlinked
 Git metadata directory could hide dependencies, cleanup keeps the candidates.
+Unreadable paths are recorded in `unreadable_dependency_paths` in the private
+report. They may hide links, so cleanup leaves potential deletion targets in
+place with `dependency-unverified`.
 If
 any `hook.<name>.command` is configured, cleanup retains every candidate
 and reports the hook key: arbitrary hook commands can depend on paths that
@@ -550,6 +648,10 @@ additional ignored artifacts you can recreate. The pattern matches from the
 worktree root under `out/`, `tmp/`, or `scratch/`; `*` does not cross a `/`.
 Preview without `--apply` and check `disposable_outputs` in the private report.
 Matching files that cannot be archived as small text evidence are discarded.
+In a retained checkout that otherwise passes the same Git, PR and activity
+checks, the report lists independent files in `planned_outputs`; `--apply`
+deletes those files without removing the checkout. Incoming links protect
+individual files as well as whole checkouts.
 A match does not override tracked or unignored
 changes, cache verification, links, sensitive names, or the usual worktree
 safety checks. It does not recursively approve matching directories.
@@ -646,7 +748,7 @@ disable the socket and stop the service; pause the Sheprd schedule as well.
 
 Scheduled cleanup is off by default. The plan in `scripts/worktree-inspector/`
 is a template outside Sheprd's automation directory. Enable it only on a
-Linux machine you choose (for example, `lin-big-omarchy`), as the owner of the
+Linux machine you choose, as the owner of the
 primary checkout on `main`. Leave it off on other hosts. First verify the
 installed inspector and its busy/clear results as described above. Make sure
 the owner's Sheprd automation service is running, `agent-coord` is available,
@@ -662,6 +764,8 @@ install -m 0644 scripts/worktree-inspector/stale-worktrees.luau .herdr/automatio
 ```
 
 The owner must approve the exact plan in Sheprd; agents must not approve it.
+After an update changes the pinned script, install the updated template and
+repeat the exact-plan approval before enabling scheduled cleanup again.
 Confirm `status` shows the next run. To turn scheduling off on that machine,
 use `sheprd-automate disable SCRIPT`, with the script ID from `sheprd-automate
 status`, and confirm no next run is listed. If a run is already active,

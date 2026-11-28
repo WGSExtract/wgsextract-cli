@@ -1,0 +1,27 @@
+# WGS Extract imprinted-dmrs v1 | GRCh38 | BED4 (0-based, half-open) | research only
+# Adapted from Table 2 of "First step towards a consensus strategy for multi-locus
+# diagnostic testing of imprinting disorders", Mackay, Bliek, Kagami et al. (2022).
+# Copyright The Author(s) 2022. https://doi.org/10.1186/s13148-022-01358-9
+# Creative Commons Attribution 4.0 International: https://creativecommons.org/licenses/by/4.0/
+# Coordinate provenance: Monk et al., "Recommendations for a nomenclature system for the
+# reporting of human imprinting disorders", https://doi.org/10.1080/15592294.2016.1264561
+# Source JATS XML: https://pmc-oa-opendata.s3.amazonaws.com/PMC9641836.1/PMC9641836.1.xml
+# JATS SHA-256: e7b5d4016567aad9a9e5b445f3ff84b7c5c53c9f753cf33479909feb59b62c72
+# Row mapping: Tab2 body rows 1-6 and 8-15, in source order, using columns 1 and 4.
+# Changes: omitted row 7 (37 bp MEG3/DLK1:IG-DMR, which cites a different coordinate
+# source); retained MEG3:TSS-DMR. Removed footnote markers and numeric punctuation,
+# and subtracted one from each start to convert 1-based closed coordinates to BED.
+chr6	144006940	144008751	PLAGL1:alt-TSS-DMR
+chr7	50781028	50783615	GRB10:alt-TSS-DMR
+chr7	130490280	130494547	MEST:alt-TSS-DMR
+chr11	1997581	2003510	H19/IGF2:IG-DMR
+chr11	2698717	2701029	KCNQ1OT1:TSS-DMR
+chr14	100824186	100827641	MEG3:TSS-DMR
+chr15	23647277	23648882	MAGEL2:TSS-DMR
+chr15	24954856	24956829	SNURF:TSS-DMR
+chr16	3442827	3444463	ZNF597:TSS-DMR
+chr19	56837124	56841903	PEG3:TSS-DMR
+chr20	58838983	58843557	GNAS-NESP:TSS-DMR
+chr20	58850593	58852978	GNAS-AS1:TSS-DMR
+chr20	58853849	58856408	GNAS-XL:Ex1-DMR
+chr20	58888209	58890146	GNAS A/B:TSS-DMR

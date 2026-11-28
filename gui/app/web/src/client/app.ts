@@ -20,6 +20,8 @@ import { renderAboutDialog } from "./view/about.js";
 import { revealPathInputEnds } from "./view/path-input.js";
 import type { BundleManifest, ManifestResponse } from "../../../shared/types.js";
 import { normalizeUIMode, visiblePages } from "../../../shared/ui-mode.js";
+import { networkAllowed } from "../../../shared/network-settings.js";
+import { showNetworkConsent } from "./network-consent.js";
 const app: HTMLElement = (() => {
     const el = document.querySelector<HTMLElement>("#app");
     if (!el) {
@@ -29,7 +31,7 @@ const app: HTMLElement = (() => {
 })();
 let bindEventsModulePromise: Promise<typeof import("./events.js")> | null = null;
 let renderSerial = 0;
-let autoRunSetupTriggered = false;
+let initialLaunch = true;
 // Declared before the top-level await below: bootstrap() reaches installDevReload().
 let devReloadInstalled = false;
 setRender(render);
@@ -49,7 +51,7 @@ async function bootstrap(locale?: string) {
         state.colorTheme = normalizeColorTheme(bundle.bundleState?.colorTheme);
         state.webUIFont = bundle.bundleState?.webUIFont === "sfPro" ? "sfPro" : "system";
         state.uiMode = normalizeUIMode(bundle.bundleState?.uiMode);
-        state.privacyMode = bundle.privacyMode === true;
+        state.networkSettings = bundle.networkSettings;
         // At launch, or when a loaded bundle changes the mode; a reload in the same mode (a language change, say) keeps the pane as it was.
         applyUIModeTerminalVisibilityIfChanged();
         state.setupRun = bundle.bundleState?.setupRun ?? null;
@@ -81,32 +83,49 @@ async function bootstrap(locale?: string) {
             bundle.configFilePaths ??
                 Object.fromEntries(configEditorControls(bundle.manifest)
                     .flatMap((control) => control.configFile ? [[control.id, control.configFile.path]] : []));
-        const shouldAutoRunSetup = Boolean(bundle.autoRunSetup) && setupHasNeverRun() && !autoRunSetupTriggered;
+        const mayStartSetup = networkAllowed(state.networkSettings, "startup-setup");
+        const shouldAutoRunSetup = initialLaunch && Boolean(bundle.autoRunSetup) && mayStartSetup && setupHasNeverRun();
         if (shouldAutoRunSetup) {
             state.setupPromptVisible = false;
             state.setupPromptDismissed = true;
             state.activePageID = setupPageID();
         }
         else {
-            state.setupPromptVisible = setupHasNeverRun() && !state.setupPromptDismissed;
+            state.setupPromptVisible = mayStartSetup && setupHasNeverRun() && !state.setupPromptDismissed;
         }
         render();
-        initializeTauriUpdater();
+        initializeTauriUpdater(initialLaunch && state.networkSettings.consent !== "pending");
+        initialLaunch = false;
+        if (state.networkSettings.consent === "pending") showNetworkConsent(onNetworkChoice);
         if (bundle.devReload) {
             installDevReload();
         }
         if (shouldAutoRunSetup) {
-            autoRunSetupTriggered = true;
-            void runAutoSetup();
+            void runStartupSetup(true);
         }
     }
     catch (error) {
         renderError(error);
     }
 }
-async function runAutoSetup() {
+function onNetworkChoice(acceptedHere: boolean) {
+    state.setupPromptDismissed = true;
+    state.activePageID = setupPageID();
+    render();
+    if (!acceptedHere) {
+        const section = app.querySelector<HTMLElement>("[data-network-settings]");
+        section?.focus();
+        section?.scrollIntoView({ block: "start" });
+        return;
+    }
+    initializeTauriUpdater();
+    if (setupHasNeverRun()) {
+        void runStartupSetup(true);
+    }
+}
+async function runStartupSetup(automatic: boolean) {
     try {
-        await runSetup();
+        await runSetup(automatic);
     } catch (error) {
         console.error("auto-run setup failed", error);
     }
@@ -152,7 +171,7 @@ function render() {
     <div class="detail-shell">
       ${renderBundleActionBar()}
       ${renderSetupGlobalStatusBar()}
-      <main class="page-panel" data-page-panel-id="${escapeAttribute(activePage?.id ?? "")}">${activePage ? renderPage(activePage) : ""}</main>
+      <main class="page-panel" data-page-panel-id="${escapeAttribute(activePage?.id ?? "")}">${activePage && networkAllowed(state.networkSettings, "explicit") ? renderPage(activePage) : ""}</main>
       ${state.isTerminalVisible ? `<div class="terminal-resizer" data-terminal-resizer role="separator" aria-orientation="horizontal" aria-label="Resize command output" tabindex="0"></div>` : ""}
       ${renderTerminalPane()}
     </div>

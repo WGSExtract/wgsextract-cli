@@ -11,6 +11,7 @@ import { loadLocalizedBundle } from "../dist/web/src/server/bundle-loader.js";
 import { createProcessManager } from "../dist/web/src/server/process-runner.js";
 import { createRequestHandler } from "../dist/web/src/server/routes.js";
 import { registerUsersWorkspace } from "../dist/web/src/server/users-workspace.js";
+import { configureOfflineVerification } from "./offline-verification-settings.mjs";
 
 const root = path.resolve(import.meta.dirname, "../../..");
 const { values } = parseArgs({ options: {
@@ -20,6 +21,7 @@ if (!values.out) throw new Error("Usage: node scripts/verify-gene-page.mjs --out
 const output = path.resolve(values.out);
 assert.ok(output.startsWith(`${path.join(root, "out")}${path.sep}`), "Evidence and fixtures must stay under this checkout's out/.");
 await mkdir(output, { recursive: true });
+await configureOfflineVerification(output);
 const cli = path.resolve(values["cli-root"]);
 const bin = path.join(cli, ".pixi/envs/default", process.platform === "win32" ? "" : "bin");
 const python = path.join(bin, process.platform === "win32" ? "python.exe" : "python");
@@ -83,9 +85,7 @@ const bam = path.join(library, "sample.bam");
 const vcf = path.join(library, "sample.vcf.gz");
 const bundleRoot = path.join(output, "bundle");
 await cp(path.join(root, "gui/examples/WGSExtract"), bundleRoot, { recursive: true });
-const users = path.join(output, "users");
-await mkdir(users, { recursive: true });
-registerUsersWorkspace(bundleRoot, users);
+registerUsersWorkspace(bundleRoot, output);
 const config = path.join(output, "config.toml");
 await writeFile(config, [
     `mygenomes_library = ${JSON.stringify(library)}`,
@@ -135,7 +135,8 @@ try {
     await page.locator("[data-gene-page-open]").click();
     await page.locator("#gene-gene").fill("brca1");
     assert.equal(await page.locator("#gene-alignment").inputValue(), bam, "The page starts from the genome chosen in the app.");
-    await page.locator("#gene-vcf").fill(vcf);
+    const vcfField = "{{usersWorkspace}}/mygenomes/sample.vcf.gz";
+    await page.locator("#gene-vcf").fill(vcfField);
     await page.locator("#gene-minDepth").fill("20");
     await page.locator("[data-gene-form] button[type=submit]").click();
     await page.locator(".gene-summary h2").filter({ hasText: "BRCA1 on hg38" }).waitFor({ timeout: 120_000 });
@@ -147,11 +148,16 @@ try {
         return route.fulfill({ json: { ok: true } });
     });
     const disclosure = page.getByRole("dialog", { name: "Open in gene.iobio?" });
+    await page.locator("#gene-vcf").fill(path.join(library, "not-the-result.vcf.gz"));
     await page.locator("[data-gene-iobio]").click();
     await disclosure.getByText(/Frameshift Genomics/).waitFor();
-    await disclosure.getByText(/BRCA1.*GRCh38.*waygate\.iobio\.io/).waitFor();
+    await disclosure.getByText(/BRCA1.*GRCh38.*analytics.*waygate\.iobio\.io/).waitFor();
+    // #1113: file-picking guidance is for the visible result, not unsaved form edits.
+    assert.deepEqual(await disclosure.getByRole("listitem").locator("bdi").allTextContents(), [bam, vcf]);
+    await disclosure.getByText(/BAM with BAI.*CRAM with CRAI.*VCF.*with TBI or CSI/).waitFor();
     await disclosure.getByRole("button", { name: "Cancel", exact: true }).click();
     await disclosure.waitFor({ state: "hidden" });
+    await page.locator("#gene-vcf").fill(vcfField);
     assert.equal(handoffs.length, 0);
     await page.locator("[data-gene-iobio]").click();
     await disclosure.getByRole("button", { name: "Accept and open gene.iobio" }).click();
@@ -161,7 +167,7 @@ try {
     opened.resolve();
     await disclosure.waitFor({ state: "hidden" });
     assert.equal(handoffs.length, 1);
-    assert.deepEqual(handoffs[0], { gene: "BRCA1", build: "hg38", consentVersion: 1 });
+    assert.deepEqual(handoffs[0], { gene: "BRCA1", build: "hg38", consentVersion: 2 });
     const proof = { exonRows: await page.locator(".gene-coverage tbody tr").count(), belowRows: await page.locator(".gene-coverage tbody tr.below").count() };
     proof.variants = await page.locator(".gene-variants tbody tr").count();
     await page.locator("[data-gene-filter]").selectOption("clinvar_plp");
@@ -185,6 +191,17 @@ try {
     await viewer.locator("[data-igv]").screenshot({ path: path.join(output, "gene-viewer.png") });
     await page.locator(".genome-viewer-shell > .genome-viewer-close").filter({ hasText: "Back to the gene page" }).click();
     await page.locator(".gene-summary").waitFor();
+    const alternate = path.join(library, "alternate.vcf.bgz");
+    await cp(vcf, alternate);
+    await cp(`${vcf}.tbi`, `${alternate}.tbi`);
+    await page.locator("#gene-vcf").fill(alternate);
+    const loadedAlternate = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/gene/open");
+    await page.locator("[data-gene-form] button[type=submit]").click();
+    assert.ok((await (await loadedAlternate).json()).document);
+    await page.locator('[data-gene-result][aria-busy="false"]').waitFor();
+    await page.locator("[data-gene-iobio]").click();
+    assert.match(await disclosure.getByRole("listitem").filter({ hasText: alternate }).innerText(), /not accepted/);
+    await disclosure.getByRole("button", { name: "Cancel", exact: true }).click();
     const violations = [...await page.evaluate(() => window.policyViolations)];
     for (const frame of page.frames()) violations.push(...await frame.evaluate(() => window.policyViolations ?? []).catch(() => []));
     assert.deepEqual(external, [], "No request may leave this computer.");

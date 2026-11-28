@@ -373,19 +373,20 @@ def test_split_records_take_only_their_own_alleles_csq():
     assert rows[("200", "AA")]["hgvs_c"] == "c.6dup"
 
 
-def test_split_record_never_takes_another_alleles_only_entries():
+@pytest.mark.parametrize(("ref", "alts"), [("A", ("C", "G")), ("a", ("c", "g"))])
+def test_1630_split_record_matches_its_own_csq_without_allele_num(ref, alts):
     # A>C,G split by `vcf clinvar`; VEP had annotated only C, so the G record
     # must not inherit C's gene just because every entry names one allele.
     entries = _csq("C", "c.1A>C")
     records = [
-        _record("chr1", "300", ".", "A", alt, "40", "PASS",
+        _record("chr1", "300", ".", ref, alt, "40", "PASS",
                 f"CSQ={entries};OLD_MULTIALLELIC=chr1|300|A|C,G|{i}", "GT", "0/1")
-        for i, alt in enumerate(("C", "G"), start=1)
+        for i, alt in enumerate(alts, start=1)
     ]  # fmt: skip
     rows = _rows(records)
-    assert rows[("300", "C")]["gene"] == "GENEB"
-    assert rows[("300", "G")]["gene"] is None
-    assert rows[("300", "G")]["hgvs_c"] is None
+    assert rows[("300", alts[0])]["gene"] == "GENEB"
+    assert rows[("300", alts[1])]["gene"] is None
+    assert rows[("300", alts[1])]["hgvs_c"] is None
 
 
 def test_split_record_uses_its_original_allele_num():
@@ -633,6 +634,7 @@ def test_1289_missing_fields_in_unannotated_vcf_stay_empty(tmp_path):
         row[column]
         for column in (
             "phase_set", "alt_fraction", "transcript_id", "gnomad_popmax_af", "gnomad_nhomalt",
+            "gnomad_faf95",
         )
     )  # fmt: skip
     assert {warning.code for warning in result.warnings} <= {"nothing_annotated"}

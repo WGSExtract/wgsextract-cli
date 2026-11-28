@@ -18,7 +18,11 @@ from tests.http_server import serving
 from wgsextract_cli import api
 from wgsextract_cli.api import VepRunParams
 from wgsextract_cli.api.vep import VepDownloadParams, VepVerifyParams
-from wgsextract_cli.commands._vep_rs_cache import _VARIATION_TABLES, _expected_sums
+from wgsextract_cli.commands._vep_rs_cache import (
+    _CORE_TABLES,
+    _VARIATION_TABLES,
+    _expected_sums,
+)
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.utils import WGSExtractError
 
@@ -81,7 +85,35 @@ def _variation_inputs(folder: Path) -> list[str]:
     ]  # fmt: skip
 
 
-def _build_cache(cache_root: Path, *, variations: bool = False) -> Path:
+def _domain_inputs(dumps: Path) -> list[str]:
+    dumps.mkdir()
+    fixtures = {
+        "gene": (
+            "100\tprotein_coding\t1\t1\t1001\t1300\t1\t\\N\tensembl_havana\t"
+            "\\N\t1\t200\tENSG00000000001\t1\t\\N\t\\N\n"
+        ),
+        "transcript": (
+            "200\t100\t1\t1\t1001\t1300\t1\t\\N\tensembl_havana\t"
+            "protein_coding\t\\N\t1\t300\tENST00000000001\t1\t\\N\t\\N\n"
+        ),
+        "translation": "300\t200\t11\t501\t90\t502\tENSP00000000001\t1\t\\N\t\\N\n",
+        "analysis_description": "8633\tProtein features from Pfam\tPfam\t1\t\\N\n",
+        "protein_feature": (
+            "70001\t300\t1\t3\t1\t3\tPF00102\t8633\t\\N\t\\N\t\\N\t\t\t\t\\N\n"
+            "70002\t300\t10\t20\t1\t11\tPF00080\t8633\t\\N\t\\N\t\\N\t\t\t\t\\N\n"
+        ),
+    }
+    # Missing tables make the builder fetch them, even on a fixture genome.
+    for table in (*_CORE_TABLES, "phenotype", "phenotype_feature"):
+        (dumps / f"{table}.txt.gz").write_bytes(
+            gzip.compress(fixtures.get(table, "").encode("ascii"))
+        )
+    return ["--core-dumps", str(dumps)]
+
+
+def _build_cache(
+    cache_root: Path, *, variations: bool = False, domains: bool = False
+) -> Path:
     """A vep-rs cache of the fixture gene, as vep-cache-builder makes it."""
     from wgsextract_cli.core.utils import run_command
 
@@ -91,6 +123,8 @@ def _build_cache(cache_root: Path, *, variations: bool = False) -> Path:
     shutil.copy(FIXTURES / "genome.fa", genome)
     run_command(["samtools", "faidx", str(genome)])
     extra = _variation_inputs(cache_root.parent / "ensembl") if variations else []
+    if domains:
+        extra += _domain_inputs(cache_root.parent / "core")
     run_command(
         [
             get_tool_path("vep-cache-builder") or "vep-cache-builder",
@@ -165,6 +199,29 @@ def test_vep_rs_annotates_and_feeds_the_variant_table(tmp_path, vep_rs_cache):
     rows = next(o.path for o in table.outputs if o.path.endswith(".tsv"))
     text = Path(rows).read_text()
     assert "TINY1" in text and "missense_variant" in text
+
+
+@needs_vep_rs
+def test_1622_exports_residue_overlap_from_native_vep_rs_cache(tmp_path: Path) -> None:
+    cache = _build_cache(tmp_path / "cache", domains=True)
+    out = tmp_path / "out"
+    api.vep.run(
+        VepRunParams(
+            input=Path(_input(tmp_path)),
+            engine="vep-rs",
+            vep_cache=cache.parents[2],
+            ref=tmp_path / "genome.fa",
+            outdir=out,
+            threads=1,
+        )
+    )
+    table = api.vcf.table(api.VcfTableParams(input=out / "in_vep.vcf.gz", outdir=out))
+    tsv = next(o.path for o in table.outputs if o.role == "variant_table")
+    with open(tsv, newline="") as stream:
+        coding, intronic = csv.DictReader(stream, delimiter="\t")
+    assert (coding["protein_position"], coding["protein_position_end"]) == ("2", "2")
+    assert coding["domains"] == "Pfam:PF00102"
+    assert not intronic["domains"] and not intronic["protein_position"]
 
 
 @needs_vep_rs
@@ -369,21 +426,40 @@ def _with_checksums(files: dict[str, bytes]) -> dict[str, bytes]:
 
 
 @needs_vep_rs
-def test_download_builds_the_vep_rs_cache_from_ensembl_files(tmp_path, monkeypatch):
+@pytest.mark.parametrize("offline_resume_1591", [False, True])
+def test_download_builds_the_vep_rs_cache_from_ensembl_files(
+    tmp_path, monkeypatch, offline_resume_1591
+):
     from tests.disk_volumes import Volumes
     from wgsextract_cli.commands import _vep_resources as vr
 
     # Room for a real build, whatever the test machine has.
     Volumes(monkeypatch).free[tmp_path] = 100
     monkeypatch.setattr(sys.stderr, "isatty", lambda: False)
-    with serving(None, _ensembl_files()) as srv:
+    files = _ensembl_files()
+    if offline_resume_1591:
+        work = tmp_path / "c/vep-rs/.download-homo_sapiens-116_GRCh38"
+        for name, data in files.items():
+            if name.endswith("/CHECKSUMS"):
+                continue
+            folder = work / "core_dumps" if "/mysql/" in name else work
+            folder.mkdir(parents=True, exist_ok=True)
+            dest = folder / Path(name).name
+            dest.write_bytes(data)
+            Path(f"{dest}.ok").touch()
+    with serving(None, files) as srv:
         for mirror in vr.VEP_MIRRORS:
             monkeypatch.setitem(vr.VEP_MIRRORS, mirror, srv.base)
         result = api.vep.download(
             VepDownloadParams(
-                engine="vep-rs", vep_cache=tmp_path / "c", variations=False
+                engine="vep-rs",
+                vep_cache=tmp_path / "c",
+                variations=False,
+                network="off" if offline_resume_1591 else None,
             )
         )
+        if offline_resume_1591:
+            assert not srv.requests
 
     version_dir = tmp_path / "c" / "vep-rs" / "homo_sapiens" / "116_GRCh38"
     assert [o.path for o in result.outputs] == [str(version_dir)]

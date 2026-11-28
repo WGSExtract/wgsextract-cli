@@ -32,6 +32,7 @@ from wgsextract_cli.api.vcf import (
     VcfPhaseParams,
     VcfPhylopParams,
     VcfPrepareParams,
+    VcfRegulatoryParams,
     VcfRevelParams,
     VcfSnpParams,
     VcfSpliceaiParams,
@@ -131,6 +132,9 @@ CERTIFICATION = {
         _REVIEWED,
         "test_pharmgkb.py",
         "PharmGKB annotations checked on fixture variants.",
+    ),
+    "vcf regulatory": tested(
+        _REVIEWED, "test_regulatory.py", "Per-ALT SCREEN overlap checked on fixtures."
     ),
     "vcf info": tested(
         _REVIEWED, "test_vcf_info.py", "VCF statistics and build checks on fixtures."
@@ -262,7 +266,7 @@ CERTIFICATION = {
 NEEDS = {
     "vcf snp": _n(HOURS, *_CALL),
     "vcf indel": _n(HOURS, *_CALL),
-    "vcf call": _n(HOURS, *_CALL, optional="delly pbsv sambamba sniffles"),
+    "vcf call": _n(HOURS, *_CALL, optional="bgzip delly pbsv sambamba sniffles"),
     "vcf info": _n(SECONDS, "bcftools", optional="htsfile samtools tabix"),
     "vcf variantqc": _n(
         MINUTES, optional="bcftools bgzip discvrseq java17 samtools tabix"
@@ -278,15 +282,17 @@ NEEDS = {
     "vcf gnomad": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf sv-freq": _n(MINUTES, "bcftools", "bgzip", "tabix", optional="samtools"),
     "vcf pharmgkb": _n(MINUTES, *_VCF, optional="bgzip samtools"),
+    "vcf regulatory": _n(MINUTES, *_VCF, "bgzip", optional="samtools"),
     "vcf prepare": _n(MINUTES, *_VCF),
     "vcf to-fasta": _n(MINUTES, "bcftools", "bgzip", "samtools", "tabix"),
     "vcf trio": _n(MINUTES, *_CALL, optional="bgzip"),
-    "vcf cnv": _n(HOURS, "bcftools", "delly", "samtools", "tabix"),
-    "vcf sv": _n(HOURS, *_CALL, optional="delly pbsv sambamba sniffles"),
-    "vcf freebayes": _n(HOURS, "bcftools", "freebayes", "samtools", "tabix"),
-    "vcf gatk": _n(HOURS, "gatk", "samtools", "tabix", optional="bcftools"),
+    "vcf cnv": _n(HOURS, "bcftools", "bgzip", "delly", "samtools", "tabix"),
+    "vcf sv": _n(HOURS, *_CALL, "bgzip", optional="delly pbsv sambamba sniffles"),
+    "vcf freebayes": _n(HOURS, "bcftools", "bgzip", "freebayes", "samtools", "tabix"),
+    "vcf gatk": _n(HOURS, "bgzip", "gatk", "samtools", "tabix", optional="bcftools"),
     "vcf deepvariant": _n(
         HOURS,
+        "bgzip",
         "samtools",
         "tabix",
         optional="bcftools docker run_deepvariant wgse-deepvariant sambamba",
@@ -294,6 +300,7 @@ NEEDS = {
     "vcf clair3": _n(
         HOURS,
         "bcftools",
+        "bgzip",
         "samtools",
         "tabix",
         optional="docker run_clair3.sh sambamba wgse-clair3",
@@ -360,6 +367,9 @@ cmd_info = command_handler("wgsextract_cli.commands.vcf.info", "cmd_vcf_info")
 cmd_pharmcat = command_handler("wgsextract_cli.commands.vcf.pharmcat", "cmd_pharmcat")
 cmd_prepare = command_handler("wgsextract_cli.commands.vcf.prepare", "cmd_prepare")
 cmd_pharmgkb = command_handler("wgsextract_cli.commands.vcf.splicing", "cmd_pharmgkb")
+cmd_regulatory = command_handler(
+    "wgsextract_cli.commands.vcf.regulatory", "cmd_regulatory"
+)
 cmd_phase = command_handler("wgsextract_cli.commands.vcf.phasing", "cmd_phase")
 cmd_phylop = command_handler("wgsextract_cli.commands.vcf.population", "cmd_phylop")
 cmd_revel = command_handler("wgsextract_cli.commands.vcf.clinvar_revel", "cmd_revel")
@@ -435,7 +445,7 @@ def register(
         vcf_subs,
         base_parser,
         "table",
-        "Export variants and their annotations (gene, consequence, ClinVar, gnomAD, genotype, depth, ...) as one row per variant, in a TSV (or Parquet) table and an SQLite database to query.",
+        "Export one row per ALT to TSV, Parquet or SQLite, including reported protein positions, domains and gnomAD FAF95.",
         VcfTableParams,
         cmd_table,
     )
@@ -568,6 +578,12 @@ def register(
             "Annotate VCF with PharmGKB drug metabolism data.",
             VcfPharmgkbParams,
             cmd_pharmgkb,
+        ),
+        (
+            "regulatory",
+            "Annotate GRCh38 variants with offline SCREEN cCRE overlap (research only).",
+            VcfRegulatoryParams,
+            cmd_regulatory,
         ),
         (
             "pharmcat",

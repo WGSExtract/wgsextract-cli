@@ -16,6 +16,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Final, Literal, cast, get_type_hints
 
+from wgsextract_cli.core.network_options import NETWORK_MODES
 from wgsextract_cli.core.paths import expand_path
 from wgsextract_cli.core.thread_count import parse_thread_count
 
@@ -127,6 +128,12 @@ class Settings:
         False,
         "Allow first-use public reference/model downloads for commands with "
         "--download (hosts and request data: docs/privacy.md); no sample uploads",
+    )
+    network_mode: str = setting(
+        "full",
+        "Outbound network mode: full keeps existing opt-ins, low also requires "
+        "--allow-large-download for bulk transfers, off refuses network access",
+        choices=NETWORK_MODES,
     )
     cohort_min_samples: int = setting(
         21,
@@ -280,8 +287,9 @@ class Settings:
     output_profile: str = setting(
         "default",
         "`align`/`realign`: default keeps --format; archive selects lossless "
-        "CRAM 3.1 (GATK 4.7+); calling selects compatible CRAM 3.0",
-        choices=("default", "archive", "calling"),
+        "CRAM 3.1 (GATK 4.7+); calling selects compatible CRAM 3.0; "
+        "fast selects faster, larger CRAM 3.1",
+        choices=("default", "archive", "calling", "fast"),
     )
     prefer_native_gpu: bool | None = setting(
         None,

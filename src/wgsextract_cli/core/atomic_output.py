@@ -7,7 +7,6 @@ import logging
 import os
 import shutil
 import stat
-import sys
 import tempfile
 import unicodedata
 import uuid
@@ -145,8 +144,11 @@ def atomic_write(path: PathInput, data: bytes, *, new_mode: int = 0o600) -> None
         with os.fdopen(fd, "wb") as stream:
             stream.write(data)
             stream.flush()
-            if sys.platform != "win32" and existing_mode is not None:
-                os.fchmod(stream.fileno(), existing_mode)
+            if existing_mode is not None:
+                if hasattr(os, "fchmod"):
+                    os.fchmod(stream.fileno(), existing_mode)
+                else:
+                    os.chmod(staged, existing_mode)
             os.fsync(stream.fileno())
 
 
@@ -194,20 +196,29 @@ def _preserve_output_permissions(
     ):
         os.chown(staged, info.st_uid, info.st_gid)
     staged.chmod(info.st_mode & 0o777)
-    if sys.platform == "linux":  # POSIX ACLs; Python has xattr calls only here
-        acl_name = "system.posix_acl_access"
+    get_xattr: Callable[[Path, str], bytes] | None = getattr(os, "getxattr", None)
+    set_xattr: Callable[[Path, str, bytes], None] | None = getattr(os, "setxattr", None)
+    remove_xattr: Callable[[Path, str], None] | None = getattr(os, "removexattr", None)
+    if get_xattr is None or set_xattr is None or remove_xattr is None:
+        return
+
+    acl_name = "system.posix_acl_access"
+    unsupported = {errno.ENOTSUP, errno.EOPNOTSUPP}
+    absent = {getattr(errno, name, None) for name in ("ENODATA", "ENOATTR")}
+    absent.discard(None)
+    try:
+        acl = get_xattr(final, acl_name)
+    except OSError as error:
+        if error.errno not in absent | unsupported:
+            raise
         try:
-            acl = os.getxattr(final, acl_name)
-        except OSError as error:
-            if error.errno not in {errno.ENODATA, errno.ENOTSUP}:
+            remove_xattr(staged, acl_name)
+        except OSError as staged_error:
+            if staged_error.errno not in absent | unsupported:
                 raise
-            try:
-                os.removexattr(staged, acl_name)
-            except OSError as staged_error:
-                if staged_error.errno not in {errno.ENODATA, errno.ENOTSUP}:
-                    raise
-        else:
-            os.setxattr(staged, acl_name, acl)
+    else:
+        # A known ACL must not be lost if copying it fails.
+        set_xattr(staged, acl_name, acl)
 
 
 def _publish_output_set(

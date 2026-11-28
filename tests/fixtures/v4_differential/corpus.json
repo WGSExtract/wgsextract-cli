@@ -417,7 +417,7 @@
       }
     },
     "recorded_run": {
-      "host": "lin-omarchy",
+      "host": "Linux x86-64",
       "cli": "6b676c17481d866a96229e8a2db654ecf88d1a3a",
       "tools": "samtools/bcftools/htslib 1.24",
       "date": "2026-11-16",

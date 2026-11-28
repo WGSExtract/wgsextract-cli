@@ -53,7 +53,7 @@ the chr20 timings, accuracy and limits.
 ## Lossless output profile measurements
 
 The opt-in [alignment output profiles](ont.md#lossless-output-profiles)
-were measured on retained ONT slices from
+`archive` and `calling` were measured on retained ONT slices from
 [#431 (ONT realignment disk growth)](https://github.com/WGSExtract/wgsextract-cli/issues/431)
 and a public short-read full genome for
 [#691 (slimmer alignment output)](https://github.com/WGSExtract/wgsextract-cli/issues/691).
@@ -61,11 +61,30 @@ The unchanged installed encoder default was CRAM 3.1 in these runs.
 These are **single shared-host observations**, not established speed ratios
 or changes to the automatic resource estimates.
 
+### Fast profile on a Linux HG002 slice
+
+[#1130 (CRAM and BAM compression timings)](https://github.com/WGSExtract/wgsextract-cli/issues/1130#issuecomment-7213327610)
+compared five paired runs on a Linux x86-64 host with four cores, samtools/HTSlib
+1.24 and 11.18 million HG002 records. Timed outputs were indexed inline.
+Each comparison kept the decoded records in order, including auxiliary tags.
+
+| Comparison | Median paired change in wall time | Output size |
+| --- | ---: | ---: |
+| CRAM 3.1 `fast`, standalone encode | −17.4% | 234 vs 193 MiB (+21%) |
+| CRAM 3.1 `fast`, samblaster → sort → indexed CRAM | −7.3% | 234 vs 193 MiB (+21%) |
+| BAM level 1, standalone encode | −61.5% | 666 vs 597 MiB (+12%) |
+
+These are slice timings, not whole-genome speedups or timings of the staged
+Metal path. `--output-profile fast` uses level 1 only for staged alignment's
+short-lived raw BAM before duplicate marking. It does not change a user BAM,
+samtools sort spill files or the duplicate marker. The staged disk preflight
+increases the raw-BAM allowance only for this profile.
+
 ### Public HG002 30× full genome
 
 The input was Google's public HG002 NovaSeq PCR-free 30× BAM: 43,667,905,004
 bytes, 723,327,664 records, against full hs38DH (3,366 reference contigs).
-On lin-mid (Linux x86-64, hostname lin-omarchy), samtools/htslib 1.24 encoded
+On a Linux x86-64 host, samtools/HTSlib 1.24 encoded
 the same coordinate-sorted input with four additional threads and the
 product's profile options. **Write time includes encoding and indexing
 only**, not mapping or sorting. `vcf snp --threads 4 --parallel --ploidy 2`
@@ -120,7 +139,7 @@ SNP record hashed identically across profiles. All realigned-slice records
 also matched source checksums, including MM/ML/MN methylation tags.
 This tests direct reader compatibility, **not ONT calling accuracy**.
 
-Evidence from 2026-11-15 is retained on lin-mid under `out/691/`:
+Evidence from 2026-11-15 is retained under `out/691/` in the validation checkout:
 `full/`, `ont/`, `original-ont/` contain commands, timing/RSS JSON and logs,
 result tables and identical-call hashes; `ont-checksums.tsv` records ONT
 sequence/tag preservation. The full run used coordinator lease L6448
@@ -285,8 +304,10 @@ Recovery checks only the selected aligner's index files. Large sidecars use
 sampled content and file metadata rather than a full read. If streamed
 extraction left out single-end reads, recovery reports the saved count even
 after extraction scratch files are gone.
-The HG00235x calibration budgets108/115 bytes per short input read for raw/marked
-BAM checkpoints and2 GiB rolling scratch; longer reads scale those allowances. Preflight also
+The HG002 35× calibration budgets 108/115 bytes per short input read for raw/marked
+BAM checkpoints and 2 GiB rolling scratch; longer reads scale those allowances.
+With `--output-profile fast`, the raw BAM allowance rises to 125 bytes per
+short input read, leaving the marked parts and rolling scratch unchanged. Preflight also
 includes the guard's safety reserve once per guarded filesystem, the extraction
 collation phase, and one bounded intermediate merge group. Merge fan-in stays
 at64 regardless of the operating system's file-descriptor limit.
@@ -443,12 +464,11 @@ few threads it has, so on hs38 no setting fits in less than about 12–13 GiB.
 WGSExtract does not offer minimap2's `-I` (split index): a split index of hs38
 needs `--split-prefix` and a merge pass, and maps more slowly.
 
-The published Linux RTX 3090 ONT/HiFi speedups are slice mapping
-measurements, not whole-genome pipeline estimates. The GPU accelerates gap
-fills, not chaining, decoding, sorting or CRAM encoding. Until
-[#1122 (Linux CUDA long-read alignment)](https://github.com/WGSExtract/wgsextract-cli/issues/1122)
-records a full RTX 3090 realignment, don't use the slice speedup to predict
-whole-genome runtime or reduce host resource budgets.
+The GPU accelerates gap fills, not chaining, decoding, sorting or CRAM
+encoding. For whole-genome runtime, use the
+[Linux x86-64 RTX 3090 whole-genome ONT realign comparison](#whole-genome-ont-requirements) rather than
+extrapolating the ONT/HiFi slice mapping speedups or using them to reduce
+host resource budgets.
 
 ### Linux native ONT qualification
 
@@ -482,9 +502,7 @@ preflight asked for about 211 GiB of output-volume space; that was not a
 measured peak. For planning, use the current
 [host requirement](#whole-genome-host-requirement) (about 221 GiB for that
 chunked run) and the [long-read disk estimates](#long-read-disk), including
-additional sort-spill space for unchunked runs. The
-[full Windows CUDA realignment](#whole-genome-ont-requirements) below does
-not qualify Linux CUDA.
+additional sort-spill space for unchunked runs.
 
 ### Long-read disk
 
@@ -659,17 +677,16 @@ writes every full-alignment tensor before predicting any (below).
 On Apple Silicon, the WGSE-built `wgse-clair3` caller instead selects **MPS
 inference with CPU streaming/scaling**, including gVCF. It uses CPU-path
 temporary-space and time estimates, not the CUDA tensor budget or NVIDIA
-memory thresholds. These time estimates are conservative placeholders, not
-measured MPS whole-genome times. MPS availability and the patched package
-are mandatory preflight checks; no automatic fallback or installation.
-Package publication/Pixi pinning is done (`macos-clair3-1`); whole-genome
-qualification is pending; see [the package release](../native/clair3/README.md#packaging-and-release).
+memory thresholds. The CLI's CPU-path estimates are not calibrated for MPS.
+MPS availability and the patched package are mandatory preflight checks;
+there is no automatic fallback or installation. See the
+[pinned package](../native/clair3/README.md#packaging-and-release).
 
 **M1 Pro sizing, 2026-11-18/19:** 10 cores, 32 GiB, four calling threads,
 Clair3 2.0.5/PyTorch 2.14.1, original-alignment public HG002 ONT reads,
 `r1041_e82_400bps_sup_v400`, through the real CLI with gVCF. Only chr20 was
 streamed from the public CRAM, once, into a shared 3.7 GiB BAM; the same
-local BAM/reference/model served both runs. No whole-genome run was made.
+local BAM/reference/model served both runs.
 The table is the awake paired repeat on 2026-11-19 with the published
 `macos-clair3-1` package: `caffeinate`, CPU then MPS in one turn of the shared
 bench lock (no other timed work; one-minute load 15–33 at the CPU run's start,
@@ -702,6 +719,22 @@ preflight estimate (~0.18 GiB); reserve space from measurements, not that
 estimate alone. Before paired whole genomes, check large-contig/gather memory
 and staging disk, and use run-scoped sleep prevention and failure
 notifications.
+
+**M1 Pro whole primary genome:** The [HG002 ONT MPS + LongPhase run](https://github.com/WGSExtract/wgsextract-cli/issues/1101#issuecomment-7214587498)
+used four caller threads, gVCF, Clair3 2.0.5 and `macos-clair3-2`. It called
+chr1–22, chrX, chrY and chrM serially in separate native-caller runs, excluding
+unplaced and decoy contigs. Measured totals exclude pauses and failed attempts.
+
+| Phase | Total elapsed | Peak sampled process-tree RSS | Disk |
+| --- | ---: | ---: | ---: |
+| Stage public CRAM into indexed per-contig BAMs | 358.58 min | Not measured | 14.17 GiB largest BAM |
+| Call variants with MPS and LongPhase | 500.53 min (8 h 21 min) | 8.46 GiB | 1.27 GiB peak caller temp; 1.30 GiB total VCF + gVCF |
+
+These are per-contig workflow measurements, not estimates of a single
+whole-genome CLI invocation. Sampled tree RSS can double-count shared pages
+and does not measure unified GPU-memory use. The whole-genome CPU baseline
+was not measured, so the paired chr20 speedup cannot be applied to this run.
+See the [accuracy results](ont.md#clair3-optional).
 
 ### Clair3's temporary space
 
@@ -770,6 +803,26 @@ accuracy and caveats are in
 | `vcf deepvariant --ont`, Google's CPU image | Ryzen 5 5600X, 10 | 11.3 h | not recorded | from the 81.4 GB primary-only CRAM 3.0 copy: work directory not recorded, 150 GB was enough; CRAM 3.1 input also needs about 1.95x its size free for a staged CRAM 3.0 copy |
 | `vcf clair3 --gpu` | Ryzen 5 5600X + RTX 3090, 6 | 2.5 h | 15.2 GiB, GPU 6.1 GiB | about 100 GiB temporary (full-alignment tensors, about 1 GiB per 1% of the genome) |
 | `rtg vcfeval` of one whole-genome VCF | 4 | 1 min | 7.2 GB | |
+
+On Linux x86-64, [one whole-genome run per backend](https://github.com/WGSExtract/wgsextract-cli/issues/1122#issuecomment-7205786003)
+used a Ryzen 5 5600X (6 cores / 12 hardware threads, 62 GiB usable RAM),
+RTX 3090, eight threads, 4 GiB chunks and 256 MiB sort memory. Both streamed
+the same public HG002 ONT PAO83395 CRAM and aligned to hs38. Total wall time
+includes streaming, building the hs38 index and writing the CRAM and its
+index, but excludes post-run validation.
+
+| Backend | Align step | Total wall time | Peak process-tree RSS | Peak own VRAM | Peak run-directory disk |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Upstream minimap2 2.31-r1302 | 59,799 s (16.61 h) | 59,806 s (16.61 h) | 16.34 GiB | 0 MiB | 212.16 GiB |
+| CUDA `wgse-minimap2` 0.4.0 | 55,142 s (15.32 h) | 55,149 s (15.32 h) | 21.00 GiB | 954 MiB | 212.26 GiB |
+
+The CUDA run finished 7.8% sooner (1.08× as fast). These runs took place under
+different shared-host loads, so the difference does not isolate CUDA's
+contribution. Both produced 7,931,564 primary records and identical sorted
+decoded-record digests. The CPU measurement is from one fresh, uninterrupted
+run; earlier interrupted attempts are excluded. Memory and disk peaks were
+sampled every five seconds; VRAM is usage attributable to the run, not
+whole-device usage.
 
 On native Windows, [one whole-genome run per backend](https://github.com/WGSExtract/wgsextract-cli/issues/1121#issuecomment-7160085047)
 used a Ryzen 9 9900X3D, RTX 5080, local NTFS storage, eight threads, and

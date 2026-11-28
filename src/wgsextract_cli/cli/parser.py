@@ -14,6 +14,7 @@ from wgsextract_cli.commands.registry import (
 )
 from wgsextract_cli.core.config import get_config_path, settings
 from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.core.network_options import NETWORK_MODES
 from wgsextract_cli.core.thread_count import parse_thread_count
 
 from .argv import config_path_from_argv as config_path_from_argv
@@ -635,6 +636,17 @@ def add_shared_arguments(
         dest="config_path",
         metavar="FILE",
         help="Read and save settings in this config.toml instead of the per-user one.",
+    )
+    add(
+        "--network",
+        choices=NETWORK_MODES,
+        help="Override config.toml network_mode: full keeps existing opt-ins, "
+        "low requires confirmation for bulk transfers, off blocks outbound access.",
+    )
+    add(
+        "--allow-large-download",
+        action="store_true",
+        help="Confirm bulk transfers in low network mode; does not replace other opt-ins.",
     )
     # Internal flags let workflows and the desktop app read result documents
     # without changing stdout, link child runs and carry server read scope.

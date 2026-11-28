@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from typing import TYPE_CHECKING
 
 from wgsextract_cli.core.dependencies import get_tool_path
@@ -31,6 +32,8 @@ def select_aligner(job: AlignJob) -> str:
     """Resolve --aligner auto and reject nonsensical aligner/platform/preset combos."""
     long_read = job.long_read or job.platform in _LONG_READ_PLATFORMS
     aligner: str = job.aligner
+    if aligner == "bonefish" and job.gpu:
+        raise UsageError("bonefish is a CPU aligner; drop --gpu.")
     if job.platform in {"ont", "nanopore"} and job.gpu:
         raise UsageError(
             "ONT --gpu alignment is not qualified to preserve MM/ML methylation "
@@ -108,6 +111,15 @@ def select_aligner(job: AlignJob) -> str:
                 "PacBio pbmm2 alignment supports --preset map-hifi, map-pb, ccs, "
                 "or subread."
             )
+    elif aligner == "bonefish":
+        _bonefish_preset(job)
+        if job.r2:
+            raise UsageError("Long reads are single-end: drop --r2.")
+        if sys.platform == "win32":
+            raise UsageError(
+                "bonefish is not supported on native Windows. Use WSL or "
+                "--aligner minimap2."
+            )
     return aligner
 
 
@@ -138,3 +150,14 @@ def _minimap2_preset(job: AlignJob) -> str:
     if job.platform == "clr" or job.long_read:
         return "map-pb"
     return "sr"
+
+
+def _bonefish_preset(job: AlignJob) -> str:
+    if job.platform in {"ont", "nanopore"} and job.preset in (None, "map-ont"):
+        return "dna"
+    if job.platform in {"hifi", "pacbio"} and job.preset in (None, "map-hifi", "ccs"):
+        return "hifi"
+    raise UsageError(
+        "bonefish aligns ONT DNA (--platform ont, --preset map-ont) or PacBio "
+        "HiFi (--platform hifi, --preset map-hifi or ccs), not short reads or CLR."
+    )

@@ -15,6 +15,7 @@ from wgsextract_cli.core import (
     bwa_mem2,
     dbsnp,
     gnomad_sv,
+    regulatory_data,
     sample_workspace,
     somalier_resources,
 )
@@ -107,6 +108,7 @@ def _build_ref_status(params: RefStatusParams) -> dict[str, Any]:
     test_genome = test_genome_status(Path(datasets))
     aadr_file = aadr_2m_path(reflib)
     aadr = {"installed": aadr_file.is_file(), "file": str(aadr_file)}
+    screen = regulatory_data.path(reflib)
 
     return {
         "referenceLibrary": {
@@ -136,6 +138,10 @@ def _build_ref_status(params: RefStatusParams) -> dict[str, Any]:
         "gnomadSv": {
             f"{source}_{build}": gnomad_sv.installed(reflib, source, build)
             for source, build in gnomad_sv.CATALOGUES
+        },
+        "regulatory": {
+            "installed": regulatory_data.provenance(screen) is not None,
+            "file": str(screen),
         },
         "ybrowse": _ybrowse_status(reflib),
         "ybrowseGrch37": _ybrowse_status(reflib, "hg19"),
@@ -213,6 +219,7 @@ def ref_status_values(status: dict[str, Any]) -> dict[str, str]:
         "library.aadrInstalled": _json_bool(status["aadr"]["installed"]),
         "library.somalierInstalled": _json_bool(status["somalier"]["installed"]),
         "library.ancestryInstalled": _json_bool(status["ancestry"]["installed"]),
+        "library.regulatoryInstalled": _json_bool(status["regulatory"]["installed"]),
         **{
             f"library.gnomadSv_{key}Installed": _json_bool(value)
             for key, value in status["gnomadSv"].items()
@@ -263,6 +270,7 @@ def print_ref_status(status: dict[str, Any]) -> None:
         if v
     ]
     human_output(f"gnomAD SV tables: {', '.join(sv_tables) or 'not installed'}")
+    human_output(f"SCREEN cCRE Registry v4: {_path_status(status['regulatory'])}")
     human_output(f"yBrowse GRCh38: {_path_status(status['ybrowse'])}")
     human_output(f"yBrowse GRCh37 (lifted): {_path_status(status['ybrowseGrch37'])}")
     human_output(f"Microarray targets: {_path_status(status['annotationVcf'])}")

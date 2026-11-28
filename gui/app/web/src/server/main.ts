@@ -14,6 +14,11 @@ import { createProcessManager } from "./process-runner.js";
 import { takeApiToken } from "./request-guard.js";
 import { createRequestHandler } from "./routes.js";
 import { forgetSetupWithMissingTools } from "./setup-runner.js";
+import { loadBundleState } from "./bundle-state.js";
+import { migrateNetworkSettingsAfterCompletedSetup, readEffectiveNetworkMode } from "./network-settings.js";
+import { withCliNetworkPolicy } from "./cli-network-policy.js";
+import { createNetworkCostDetector, systemNetworkCost } from "./network-cost/detector.js";
+import { queryNetworkCost } from "./network-cost/query.js";
 import { prepareBundleWorkspace } from "./workspace.js";
 import { moveWorkspace } from "./workspace-move.js";
 import { withWorkspaceUse } from "./workspace-activity.js";
@@ -29,6 +34,9 @@ const packageRoot = path.resolve(distRoot, "..");
 const webRoot = path.join(packageRoot, "web");
 const repoRoot = path.resolve(packageRoot, "..");
 const args = parseArgs(process.argv.slice(2));
+if (args.networkCostExecutable) {
+    systemNetworkCost.detect = createNetworkCostDetector(process.platform, queryNetworkCost, args.networkCostExecutable);
+}
 // Before anything starts a program: the programs setup and actions run are the system's, not the AppImage's.
 leaveAppImageEnvironment();
 const sourceBundleRoot = path.resolve(args.bundle ?? path.join(repoRoot, "examples", "WGSExtract"));
@@ -43,7 +51,9 @@ const nativePicker = takeNativePickerEndpoint(apiToken);
 const portFile = process.env.GFC_PORT_FILE;
 delete process.env.GFC_PORT_FILE;
 
-const { runProcess, terminateAllProcesses } = createProcessManager({ maxOutputBytes: 1_048_576, maxErrorBytes: 65_536 });
+const processManager = createProcessManager({ maxOutputBytes: 1_048_576, maxErrorBytes: 65_536 });
+const { terminateAllProcesses } = processManager;
+const runProcess = withCliNetworkPolicy(processManager.runProcess);
 const initialRuntime = await withWorkspaceUse(async () => {
     await migrateLegacyAppData();
     return loadBundleRuntime(sourceBundleRoot, false);
@@ -153,13 +163,19 @@ async function loadBundleRuntime(requestedSource: string, preload: boolean) {
     const sourceManifest = await loadManifestFromRoot(resolvedSourceBundleRoot);
     const resolvedBundleRoot = await prepareBundleWorkspace(sourceManifest, resolvedSourceBundleRoot);
     const manifest = await loadManifestFromRoot(resolvedBundleRoot);
+    if (manifest.id === "wgs-extract") {
+        const status = (await loadBundleState(resolvedBundleRoot)).setupRun?.status;
+        if (status === "ok" || status === "warning") await migrateNetworkSettingsAfterCompletedSetup();
+    }
     await forgetSetupWithMissingTools(manifest, resolvedBundleRoot);
     const runtime = {
         sourceBundleRoot: resolvedSourceBundleRoot,
         bundleRoot: resolvedBundleRoot,
         manifest,
         workspaceMoveRevision: await workspaceMoveRevision(manifest),
-        jobServer: manifest.jobServer ? createJobServer(manifest.jobServer, resolvedBundleRoot, runProcess) : undefined,
+        jobServer: manifest.jobServer
+            ? createJobServer(manifest.jobServer, resolvedBundleRoot, processManager.runProcess, readEffectiveNetworkMode)
+            : undefined,
         dynamicActions: new Map(),
     };
     return { ...runtime, localizedBundleLoader: localizedLoader(runtime, preload) };

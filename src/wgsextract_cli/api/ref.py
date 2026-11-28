@@ -19,7 +19,7 @@ from pathlib import Path
 
 from wgsextract_cli.core.results import CommandResult
 
-from ._params import Params, param
+from ._params import Params, param, with_config_defaults
 from ._ref_acmg import RefAcmgDataParams as RefAcmgDataParams
 from ._ref_genomes import ALIGNER_INDEXES as ALIGNER_INDEXES
 from ._ref_genomes import RefCountNsParams as RefCountNsParams
@@ -210,6 +210,41 @@ class RefCytobandsParams(_InLibrary, Params):
 
 
 @dataclass(frozen=True, kw_only=True)
+class RefRegulatoryParams(_InLibrary, Params):
+    """Check, download or import the GRCh38 SCREEN cCRE Registry v4 BED."""
+
+    COMMAND = "ref regulatory"
+
+    source: str = param("screen", help="Regulatory data source.", choices=("screen",))
+    build: str = param("hg38", help="Assembly of the BED.", choices=("hg38",))
+    download: bool = param(
+        False,
+        help="Fetch the pinned public BED (129 MB) from downloads.wenglab.org.",
+        action="store_true",
+        writes=True,
+    )
+    bed: Path | None = param(
+        None,
+        help="Import a sorted, six-column GRCh38 SCREEN v4 BED (may be gzip-compressed).",
+        path="file",
+        writes=True,
+    )
+    ref: Path | None = ref_param()
+
+    def library(self) -> Path:
+        from wgsextract_cli.core.ref_library.assets import resolve_reference_library
+        from wgsextract_cli.core.ref_library.resolver import library_roots
+
+        return Path(resolve_reference_library(library_roots(self.ref).root))
+
+    def implied_paths(self) -> Iterator[tuple[str, Path]]:
+        from wgsextract_cli.core import regulatory_data
+
+        filled = with_config_defaults(self, only={"ref"})
+        yield from regulatory_data.guarded_paths(filled.ref)
+
+
+@dataclass(frozen=True, kw_only=True)
 class RefGeneMapParams(_InLibrary, Params):
     """Download the hg19 and hg38 gene maps into the library, or delete them."""
 
@@ -325,6 +360,21 @@ def gnomad_sv(
     from wgsextract_cli.commands.ref.library_commands import run_gnomad_sv
 
     return execute(params, run_gnomad_sv, progress=progress, cancel=cancel, check=check)
+
+
+def regulatory(
+    params: RefRegulatoryParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Check or install the track; output role ``regulatory_track``."""
+    from wgsextract_cli.commands.ref.regulatory import run_regulatory
+
+    return execute(
+        params, run_regulatory, progress=progress, cancel=cancel, check=check
+    )
 
 
 def ybrowse(

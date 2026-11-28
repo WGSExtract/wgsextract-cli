@@ -40,8 +40,9 @@ Copilot already reviewed the head, and never checks out or executes PR
 code. The default-branch ruleset also reviews owner drafts when they are opened,
 but not later pushes; agents request a fresh draft review after pushing
 (`gh pr edit N --add-reviewer @copilot`) and handle its threads before
-readiness (#1281). Readiness remains the point where validation starts, not the
-first opportunity for review, so review rounds no longer rerun the matrix.
+readiness (#1281). Trivial site/docs PRs need one review, not both a separate
+independent review and Copilot. Readiness remains the point where validation
+starts, so draft review rounds no longer rerun the matrix.
 Before `gh pr ready`, run `pixi run lint`, the routing/workflow-policy tests,
 relevant product tests and type checks, documentation freshness checks if docs
 changed, and `pixi run pre-commit run gitleaks --all-files` locally. The former
@@ -115,6 +116,49 @@ Source dates come from the newest available Linux nightly coverage map from
 the last seven days and the main branch's Git history. The map attributes executed
 source files to **test modules**, not to individual cases. A missing
 attribution is unknown, not evidence that the test covers nothing.
+
+### Test-suite growth budget
+
+Hosted Ubuntu ready runs summarize regular pytest JUnit once, combining shards
+where needed. This is advisory and adds no test runs, artifact downloads or
+required checks. Fully certified or cache-skipped tests have no new timing
+evidence. Optional E2E JUnit, other platforms and GUI/native jobs are not part of
+this budget. The weekly review compares actual totals from the newest usable
+full Ubuntu nightly in its window, or reports that none was available. It
+checks unsharded JUnit against the archived scope, excluding remote-only modules.
+
+The budget counts JUnit cases (including skips and parametrizations) and sums
+case seconds, not parallel wall time. Each module belongs to the first matching
+selector bucket: CI policy, docs & CLI reference, optional-tool modules,
+nightly fallback exclusions, CLI integration, or regular CLI. The full suite
+has its own target. The initial [baseline](../scripts/ci_test_budget_baseline.json)
+comes from [Ubuntu nightly 45876381962](https://github.com/WGSExtract/wgsextract-cli/actions/runs/45876381962).
+Runtime targets add 15% (at least 10 seconds) and count targets add 10%, rounded up
+to a multiple of five.
+
+Ready estimates retain baseline costs for unmeasured modules still in the tree
+and substitute measurements for modules that ran. Changes to which cases skip cannot
+earn speedup credit; the candidate check ignores timing changes for these
+modules. Missing or invalid timings make the receipt unusable. The summary
+marks candidate regressions only when an area grows
+to more than 125% of its runtime budget and the full-suite projection also grows.
+Count-only overruns are advisory. Treat estimates as a cue to inspect fixtures
+and execution scope, not proof of a slowdown. Before making the signal blocking,
+validate it on comparable runs, especially the noisy CI-policy bucket. Prefer
+shared fixtures or parametrization that actually reduces cost; the separate
+`test-smells` lint still checks how tests are written.
+
+To propose a rebaseline, download the intact `tests-ubuntu-all` artifact from
+an existing successful, unsharded **full** Ubuntu nightly, then run:
+
+```sh
+gh run download RUN_ID -n tests-ubuntu-all -D out/budget-nightly
+python -m scripts.ci_test_budget --nightly-artifact out/budget-nightly \
+  --calibrate-run RUN_ID
+```
+
+Review the resulting module and target diff; do not rebaseline just to clear an
+individual PR's overrun.
 
 ## PR check routing
 
@@ -252,38 +296,87 @@ Already verified downloads are reused; incomplete or incorrect downloads never
 replace a verified archive.
 
 For **full Ubuntu/macOS product suites**, install the supplemental environments
-needed by the selection (normally `vep-rs`; `imputation`, `pacbio`, `phasing`,
-and `somalier` for their routed tests), then retain their wheels too:
+needed by the selection (normally `vep-rs`; also `delly` on macOS; `imputation`,
+`pacbio`, `phasing`, and `somalier` for their routed tests), then retain their
+wheels too:
 
 ```sh
 pixi install --locked -e vep-rs
 just certify-setup -e default -e dev -e vep-rs --reference
 ```
 
-Repeated `-e` replaces the default environment list. `--reference` retains the
-bootstrap release archive after verifying its pinned SHA-256, safely extracts
-missing support files, fetches the pinned liftOver chain (with the same mirror
-fallback as CI), and prepares hs38 with the catalog installer. It then
-validates all reference bytes, including the catalog-pinned full genome.
-This can download several GiB; run under the resource coordinator on shared
-hosts. Existing conflicting bootstrap files are not overwritten: the refusal
-identifies the file to move aside before repeating setup.
-An older or modified hs38 FASTA must likewise be moved aside with its indexes
-before rerunning setup; the normal catalog installer reuses an existing FASTA
-rather than replacing it with the pinned copy.
+Repeated `-e` replaces the default environment list. `--reference` prepares the
+pinned bootstrap, liftOver chain and full hs38 FASTA in one host store, then
+symlinks `reference` in the checkout to that library. The store defaults to
+`out/shared/certification-reference/` **in the primary checkout**. To put it
+on another disk, set an absolute path in the primary checkout's
+`out/shared/config.toml` before preparing it:
 
-References use `reference_library` in config.toml, falling back to `reference/`.
-To reuse a machine's existing library across worktrees, configure that path
-using normal CLI configuration rather than copying the multi-GiB genome.
-Each checkout still needs the retained bootstrap archive and wheel archives.
-Generic-only and CI-policy-only certifications do not need reference setup.
+```toml
+certification_reference_store = "/data/wgse-certification-reference"
+```
+
+Keep the store outside linked worktrees. Reading this optional configuration
+requires Python 3.11 or newer; offline cleanup with the default location still
+works on Python 3.10. The store keeps separate versions when the pins change.
+Setup checks the SHA-256 of the retained release archive, extracted
+assets, pinned chain and catalog FASTA once per version. Certification checks
+that the verified files and indexes have not changed since then; it neither
+downloads nor rehashes unchanged shared data. Treat the linked library as
+read-only: use a separate `--ref` directory for experiments that write to it.
+If a verified reference or index changed, setup and certification refuse to
+reuse it. Stop jobs using that version, move the version directory named in
+the error aside, then rerun `just certify-setup --reference` to rebuild it.
+The initial setup can download several GiB; run it under the resource
+coordinator on shared hosts.
+
+For a new worktree on an already prepared host, `just certify-setup
+--link-reference` links the library offline without preparing wheels. Existing
+libraries are not overwritten. To reuse the shared library, move a local
+`reference/` aside; an explicit `reference_library` must either be the
+worktree's `reference` or point to the pinned library. Legacy libraries
+with a retained per-checkout bootstrap still work, but must be checked from
+scratch on each certification. `just certify-setup --link-hs38 /absolute/path/to/hs38.fa.gz`
+is an offline way to replace an individual ignored FASTA in a linked checkout:
+it checks the full SHA-256, leaves nonmatching files and sidecars alone, and
+should be run only while nothing is writing to that path.
+
+Each checkout still needs its wheel archives. Generic-only and CI-policy-only
+certifications do not need reference setup.
 
 #### Certifying a PR
 
-Before marking a pushed owner PR ready, run `just certify` on a clean checkout.
+Keep owner PRs in draft while reviewing. Run the scoped local preflight, batch
+fixes, and finish the review of the current pushed SHA before requesting
+certification. Review is settled when the current-head review is complete, no
+newer review is pending, all actionable threads are handled, and no required
+approval is outstanding. The review-start-timeout exception requires a clean
+independent review and a readiness note. Do not certify each round. Attempt each
+eligible layer once on that head, reuse only valid evidence for that SHA, and
+cancel stale work. Do not refresh a mergeable PR merely because main advanced.
+If a necessary fix or refresh changes the SHA, return to draft and settle review
+again before certification or a new ready matrix.
+
+Use the existing ready router, not a separate path allowlist:
+
+| Routed work | Local candidates beyond generic |
+|---|---|
+| CLI source/tests, shared runtime inputs, assets/native files read by CLI tests, or broad fallback | Non-empty CLI lanes: Ubuntu → Linux x64; macOS → macOS ARM64; Windows → Windows x64; ARM64 → Linux ARM64. Routed optional integrations add Linux x64 for CLI changes. |
+| Prose, docs, site or CI policy/workflows without CLI inputs | None. Keep routed docs, site, policy, OS smoke and optional-tool checks hosted if not covered. The owner prose fast path still applies. |
+| GUI/native-only without CLI inputs, or pure moves | Preserve the separate GUI/native gates and hosted move guards. |
+
+Mixed diffs take the union; a policy or site edit cannot mask a CLI input.
+Choose an immediately available slot of the exact native platform with prepared
+inputs. Otherwise record hosted fallback, without provisioning or retrying on
+that head. A local test failure is actionable, not a host-unavailability
+exception. Keep ready admission and the passing current-head hosted `required`
+verdict; jobs without matching evidence still run hosted.
+
+On a clean checkout, use `just certify --generic-only` for generic and
+`just certify --platform-only` on each selected native host.
 On shared Linux hosts use
-`agent-coord run --cores 4 --mem 8G --label "PR certification" -- just certify`.
-`--platform-only` / `--generic-only` divide the layers across machines.
+`agent-coord run --cores 4 --mem 8G --label "PR certification" -- just certify --generic-only`
+for generic (substitute `--platform-only` for the native layer).
 The host platform is detected, never overridden; Linux x64 cannot certify ARM64,
 macOS or Windows. All selected tests run locally in full, without CI's
 passed-test cache. Lint, strict typing, changed-file lint, routed docs/site checks
@@ -352,15 +445,15 @@ Register SSH aliases and their native platforms in a controller-side
 
 ```toml
 [[certification.hosts]]
-alias = "seraph"
+alias = "windows-host"
 platform = "windows-x64"
 
 [[certification.hosts]]
-alias = "minipc"
+alias = "windows-backup"
 platform = "windows-x64"
 
 [[certification.hosts]]
-alias = "mahyar-pro-14"
+alias = "mac-host"
 platform = "macos-arm64"
 ```
 
@@ -374,10 +467,10 @@ just certify --remote macos-arm64 --remote-config /path/to/config.toml --platfor
 `--remote` accepts a registered alias or a platform. For a platform it tries
 hosts in listed order and skips hosts that fail the SSH, checkout, disk or
 native-platform probe, or whose controller lock is busy. It does not retry a
-failed or interrupted test on another host. `randy-mini` remains the built-in
-macOS ARM64 fallback; `just certify --remote randy-mini` still works. If
-`--remote-config` is omitted, the controller reads `config.toml` in its
-working directory if present.
+failed or interrupted test on another host. Only hosts listed in the
+remote-hosts configuration file are eligible; there is no built-in fallback.
+If `--remote-config` is omitted, the controller reads `config.toml` in its
+working directory.
 
 The controller enforces the same clean, pushed, same-repository open-PR and
 writer checks as local certification. It holds a local `agent-coord` lock named
@@ -399,13 +492,13 @@ coordinate explicitly with anyone else using the machine.
 
 The bootstrap fetches the exact pushed head and base SHAs over public HTTPS
 and creates `~/src/wgsextract-cli/scratch/certify-<head-sha>` as a detached
-worktree if absent. Branch names never enter the remote command. If the run
-refuses for missing environments, explicitly install the locked environments
-in **that worktree**, as in one-time preparation above, then retry. The worker
-runs `certify-setup` if retained wheels or reference inputs need preparation,
-then executes the same native platform or generic commands as local
-certification. Remote input setup may download pinned archives; the test phase
-uses `--no-install`.
+worktree if absent. Branch names never enter the remote command. Remote
+certification uses the same native platform or generic commands as local
+certification. Prepare locked environments and retained inputs separately
+from ready admission; if required inputs are absent, fall back to hosted
+checks rather than provisioning or retrying for that head. Use
+`--prepared-only` for coordinated remote attempts; the test phase uses
+`--no-install`.
 
 The worker's filesystem must start with 30 GiB free. A one-second watchdog
 stops the worker below 26 GiB to preserve the 25 GiB reserve. Loss of SSH or
@@ -1024,10 +1117,11 @@ longer blocks admission. Unknown workflows reserve capacity until they
 complete; the coordinator can cancel unstarted agent runs, not reclaim runners
 from agent jobs already running. `--wait` polls with
 exponential backoff, polling a last time at `--timeout` seconds; `--json`
-prints the counts. The check reserves nothing, so each supervisor admits one
-PR at a time and starts the next check only once the previous PR's ready run
-is visible; concurrent supervisors can overshoot `--max-ready` by at most one
-run each.
+prints the counts. Use spare capacity without delaying queue work or priority
+authors; don't infer spare slots from jobs that haven't fanned out. The check
+reserves nothing: each supervisor waits until its previous admission is
+visible before checking the next one. Concurrent supervisors can overshoot
+`--max-ready` by at most one run each.
 
 #### Fast path for collaborators
 
@@ -1112,13 +1206,18 @@ keys, so UCSC outages cannot break the migration. Main seeds the canonical
 checksum-only key from either a verified fallback or a verified download;
 no new run-id keys are written.
 
-Every workflow installs Pixi through `.github/actions/setup-pixi`, which holds
-CI's only Pixi version pin; `scripts/validate_github_actions.py` rejects direct
-`prefix-dev/setup-pixi` steps. Pixi-binary-only build jobs pass `install:
-"false"`, which also skips project caching: restoring an unused old environment
-would keep it alive. Manual mirror/bwa qualification jobs and the Copilot setup
-use the same read-only CLI cache rather than creating additional partial
-environment sets.
+Every workflow installs Pixi through `.github/actions/setup-pixi`, which pins
+the release executable by version, platform and SHA-256. Main seeds the
+executable cache separately from the project environment; every consumer
+checks the digest, and a cold download has bounded retries. The action
+validator rejects direct `prefix-dev/setup-pixi` steps. Pixi-binary-only build
+jobs pass `install: "false"` to skip project environment caching. A
+binary-only Windows ARM64 job keeps the Pixi and vcpkg caches warm on a
+schedule without starting native qualifications. The vcpkg bootstrap verifies
+the native executable against its own digest and checks that its release tag
+matches the pinned ports checkout. Manual mirror/bwa qualification jobs
+and the Copilot setup use the same read-only CLI environment cache rather
+than creating additional partial environment sets.
 Release verification installs its immutable tag's environment without caching;
 an unpublished old tag can predate today's local CI helper actions, so Pixi
 comes from the run's own commit before the tag is checked out.

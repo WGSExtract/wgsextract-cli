@@ -282,9 +282,9 @@ fi
 first_budget=$DOWNLOAD_SECONDS
 if [ "${#mirrors[@]}" -gt 1 ]; then first_budget=$((DOWNLOAD_SECONDS / 3)); fi
 apt_get "$first_budget" install -y --download-only "${install_flags[@]}" "$@" || status=$?
-if [ "$first_budget" -lt "$DOWNLOAD_SECONDS" ] && { [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; }; then
-  echo "::warning::Timed out downloading Ubuntu packages; trying the next mirror first."
-  mirrors=("${mirrors[@]:1}" "${mirrors[0]}")
+if [ "$status" -ne 0 ] && [ "$first_budget" -lt "$DOWNLOAD_SECONDS" ] && network_failure "$status"; then
+  echo "::warning::Ubuntu package download failed (exit $status); retrying without ${mirrors[0]}."
+  mirrors=("${mirrors[@]:1}")
   write_mirrors
   status=0
   apt_get "$((DOWNLOAD_SECONDS - first_budget))" install -y --download-only "${install_flags[@]}" "$@" || status=$?

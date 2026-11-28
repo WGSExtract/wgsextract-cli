@@ -18,6 +18,7 @@ from build import (
     read_bed,
     read_metadata,
 )
+from numpy.typing import NDArray
 
 # Component names (ADMIXTURE components are unordered, so they are
 # recognised by the reference population with the highest mean share). Named
@@ -49,11 +50,6 @@ NAMES_12 = {
     ("Papuan", "Melanesian"): "Oceanian",
 }
 PCS = 10
-FASTA = {
-    "GRCh38": "/mnt/nas/genetics/reference/genomes/hg38.fa.gz",
-    "GRCh37": "/mnt/nas/genetics/reference/genomes/hs37d5.fa.gz",
-    "CHM13": "/mnt/nas/genetics/reference/genomes/chm13v2.0.fa.gz",
-}
 _COMPLEMENT = str.maketrans("ACGT", "TGCA")
 
 
@@ -75,14 +71,23 @@ def _reference_bases(fasta: str, loci: list[tuple[str, int]]) -> list[str]:
     return [line.upper() for line in out.splitlines() if not line.startswith(">")]
 
 
-def _fasta_contig(fasta: str, chrom: int) -> str:
+def _fasta_contigs(fasta: str, chrom: NDArray[np.uint8]) -> dict[int, str]:
     names = {
         line.split("\t")[0] for line in Path(fasta + ".fai").read_text().splitlines()
     }
-    return f"chr{chrom}" if f"chr{chrom}" in names else str(chrom)
+    return {
+        int(c): f"chr{c}" if f"chr{c}" in names else str(c) for c in np.unique(chrom)
+    }
 
 
-def _lift(work: Path, build: str, chrom: np.ndarray, pos: np.ndarray, ref: list[str]):
+def _lift(
+    work: Path,
+    build: str,
+    fasta: str,
+    chrom: NDArray[np.uint8],
+    pos: NDArray[np.int32],
+    ref: list[str],
+) -> tuple[NDArray[np.uint8], NDArray[np.int32]]:
     """(chrom, pos) on ``build``, 0 where a site doesn't lift one-to-one onto
     the same strand with the same reference base."""
     from pyliftover import LiftOver
@@ -98,12 +103,15 @@ def _lift(work: Path, build: str, chrom: np.ndarray, pos: np.ndarray, ref: list[
         if target.isdigit() and 1 <= int(target) <= 22:
             out_chrom[i], out_pos[i] = int(target), hits[0][1] + 1
     lifted = np.flatnonzero(out_pos)
-    fasta = FASTA[build]
-    loci = [(_fasta_contig(fasta, int(out_chrom[i])), int(out_pos[i])) for i in lifted]
-    bases = _reference_bases(fasta, loci)
-    for i, base in zip(lifted, bases, strict=True):
-        if base != ref[i]:
-            out_chrom[i] = out_pos[i] = 0
+    if not lifted.size:
+        return out_chrom, out_pos
+    contigs = _fasta_contigs(fasta, out_chrom[lifted])
+    bases = _reference_bases(
+        fasta, [(contigs[int(out_chrom[i])], int(out_pos[i])) for i in lifted]
+    )
+    for index, base in zip(lifted, bases, strict=True):
+        if base != ref[index]:
+            out_chrom[index] = out_pos[index] = 0
     return out_chrom, out_pos
 
 
@@ -175,7 +183,7 @@ def _components(k: int, q: np.ndarray, samples: list[str], meta) -> list[dict]:
     return components
 
 
-def package(work: Path, ks: list[int]) -> None:
+def package(work: Path, ks: list[int], fastas: dict[str, str]) -> None:
     meta = read_metadata(work)
     genotypes, samples, bim = read_bed(work / "sets" / "train")
     chrom = np.array([int(b[0].removeprefix("chr")) for b in bim], dtype=np.uint8)
@@ -184,8 +192,10 @@ def package(work: Path, ks: list[int]) -> None:
     ref = [b[5] for b in bim]
     order = np.lexsort((pos, chrom))
     assert (order == np.arange(len(order))).all(), "sites must be in genome order"
+    grch38 = fastas["GRCh38"]
+    contigs = _fasta_contigs(grch38, chrom)
     bases = _reference_bases(
-        FASTA["GRCh38"], [(f"chr{c}", int(p)) for c, p in zip(chrom, pos, strict=True)]
+        grch38, [(contigs[int(c)], int(p)) for c, p in zip(chrom, pos, strict=True)]
     )
     assert bases == ref, "GRCh38 reference alleles don't match hg38"
     arrays: dict[str, np.ndarray] = {
@@ -195,7 +205,7 @@ def package(work: Path, ks: list[int]) -> None:
     lifted = {}
     for build in ("GRCh37", "CHM13"):
         arrays[f"chrom_{build}"], arrays[f"pos_{build}"] = _lift(
-            work, build, chrom, pos, ref
+            work, build, fastas[build], chrom, pos, ref
         )
         lifted[build] = int((arrays[f"pos_{build}"] > 0).sum())
     components = {}

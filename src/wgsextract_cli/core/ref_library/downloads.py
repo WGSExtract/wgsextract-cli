@@ -34,10 +34,11 @@ from wgsextract_cli.core.download_progress import (
     require_http_url,
     retryable_http_status,
 )
-from wgsextract_cli.core.network_policy import require_download
+from wgsextract_cli.core.network_policy import require_download, require_network
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 from . import segmented
+from .bgzf_repair import repair_bgzf
 from .segmented import range_start
 
 
@@ -80,6 +81,7 @@ def resolve_github_release_asset_sha256(url: str) -> str | None:
     if github_token:
         headers["Authorization"] = f"Bearer {github_token}"
 
+    require_network("GitHub release checksum lookup", large=False)
     req = Request(api_url, headers=headers)
     with urlopen(req, timeout=30) as response:
         release = json.loads(response.read().decode("utf-8"))
@@ -102,6 +104,15 @@ def resolve_github_release_asset_sha256(url: str) -> str | None:
 
 def verify_download_sha256(path: str, expected_sha256: str | None) -> bool:
     """Verify a downloaded file against an expected SHA-256 digest."""
+    return _verify_download_sha256(path, expected_sha256)
+
+
+def _verify_download_sha256(
+    path: str,
+    expected_sha256: str | None,
+    *,
+    repair: Callable[[str], bool] | None = None,
+) -> bool:
     if not expected_sha256:
         return True
 
@@ -117,6 +128,11 @@ def verify_download_sha256(path: str, expected_sha256: str | None) -> bool:
     actual_sha256 = sha256.hexdigest()
     if actual_sha256 == expected_sha256.lower():
         logging.info(f"Verified SHA-256 of {Path(path).name}: {actual_sha256}")
+        return True
+    if repair is not None and repair(expected_sha256.lower()):
+        logging.info(
+            "Verified SHA-256 of repaired %s: %s", Path(path).name, expected_sha256
+        )
         return True
 
     logging.error("Downloaded file checksum mismatch.")
@@ -139,6 +155,7 @@ def download_file(
     resolve_release_digest: bool = True,
     use_cache: bool = True,
     use_mirrors: bool = True,
+    large: bool = True,
 ) -> bool:
     """Prefer audited, pinned mirrors; retain the original source as fallback."""
     require_download(Path(dest).name)
@@ -153,19 +170,32 @@ def download_file(
         r"[a-fA-F0-9]{64}", expected_sha256
     ):
         raise WGSExtractError("Expected SHA256 must contain exactly 64 hex digits.")
-    if use_mirrors and (entry := mirror_for(url)):
+    entry = mirror_for(url) if use_mirrors else None
+    if entry and expected_sha256 is None and not entry.get("upstream_mutable", False):
+        expected_sha256 = entry["sha256"]
+    if (
+        use_cache
+        and expected_sha256
+        and _restore_download(url, dest, expected_sha256.lower())
+    ):
+        return True
+    if entry:
         if Path(dest + ".partial").exists():
             logging.info(
                 "Resuming upstream partial for %s; skipping mirror.", entry["id"]
             )
         elif download_mirror(
-            entry, dest, progress_callback, cancel_event, expected_sha256, use_cache
+            entry,
+            dest,
+            progress_callback,
+            cancel_event,
+            expected_sha256,
+            use_cache,
+            large=large,
         ):
             return True
         if cancel_event and cancel_event.is_set():
             return False
-        if expected_sha256 is None and not entry.get("upstream_mutable", False):
-            expected_sha256 = entry["sha256"]
     ok = _download_file(
         url,
         dest,
@@ -174,6 +204,7 @@ def download_file(
         expected_sha256=expected_sha256,
         resolve_release_digest=resolve_release_digest,
         use_cache=use_cache,
+        large=large,
     )
     if ok and use_mirrors and Path(dest + ".mirror").exists():
         try:
@@ -214,6 +245,22 @@ def download_file(
     return ok
 
 
+def _restore_download(url: str, dest: str, expected_sha256: str | None) -> bool:
+    target = Path(dest)
+    partial = dest + ".partial"
+    if target.exists() or Path(partial).exists():
+        return False
+    if not restore_cached_download(
+        url,
+        target,
+        checksum_hint=f"sha256:{expected_sha256}" if expected_sha256 else None,
+        verify=lambda path: verify_download_sha256(str(path), expected_sha256),
+    ):
+        return False
+    Path(partial + ".source").unlink(missing_ok=True)
+    return True
+
+
 def _download_file(
     url: str,
     dest: str,
@@ -223,18 +270,16 @@ def _download_file(
     expected_sha256: str | None = None,
     resolve_release_digest: bool = True,
     use_cache: bool = True,
+    large: bool = True,
 ) -> bool:
     """Resume .partial files; replace dest only after verification.
 
     Disabling release metadata lookup does not disable an explicit checksum.
     Disabling cache use bypasses both restoration and publication.
     """
-    require_http_url(url, "download URL")
+    require_network(Path(dest).name, large=large)
+    pinned = expected_sha256 is not None
     partial_dest = dest + ".partial"
-    if expected_sha256 is not None and not re.fullmatch(
-        r"[a-fA-F0-9]{64}", expected_sha256
-    ):
-        raise WGSExtractError("Expected SHA256 must contain exactly 64 hex digits.")
     try:
         if expected_sha256 is not None:
             expected_sha256 = expected_sha256.lower()
@@ -262,15 +307,8 @@ def _download_file(
     segments_path = Path(partial_dest + ".segments")
     if partial_path.exists() and not segments_path.exists():
         _bind_single_partial(url, partial_path)
-    if use_cache and not dest_path.exists() and not partial_path.exists():
-        if restore_cached_download(
-            url,
-            dest_path,
-            checksum_hint=checksum_hint,
-            verify=lambda path: verify_download_sha256(str(path), expected_sha256),
-        ):
-            Path(partial_dest + ".source").unlink(missing_ok=True)
-            return True
+    if use_cache and not pinned and _restore_download(url, dest, expected_sha256):
+        return True
 
     # A large file over several connections (servers that cap each one), unless
     # an earlier single-connection attempt left a partial to resume.
@@ -306,7 +344,13 @@ def _download_file(
                     remote,
                     progress_callback,
                     cancel_event,
-                    verify=lambda path: verify_download_sha256(path, expected_sha256),
+                    verify=lambda path: _verify_download_sha256(
+                        path,
+                        expected_sha256,
+                        repair=lambda pin: repair_bgzf(
+                            path, url, remote, pin, cancel_event
+                        ),
+                    ),
                 )
             except segmented.RangesUnsupported:
                 logging.info("Server ignores byte ranges; using one connection.")
@@ -531,7 +575,13 @@ def _urllib_download(
                     )
                 logging.info("%s is already fully downloaded.", Path(dest).name)
                 return _finish_download(
-                    url, dest, partial_dest, expected_sha256, checksum_hint, use_cache
+                    url,
+                    dest,
+                    partial_dest,
+                    expected_sha256,
+                    checksum_hint,
+                    use_cache,
+                    cancel_event,
                 )
             code = response.getcode()
             served = segmented.Revision.from_headers(response.info())
@@ -577,7 +627,13 @@ def _urllib_download(
                 use_cache,
             )
         return _finish_download(
-            url, dest, partial_dest, expected_sha256, checksum_hint, use_cache
+            url,
+            dest,
+            partial_dest,
+            expected_sha256,
+            checksum_hint,
+            use_cache,
+            cancel_event,
         )
     except DownloadCancelled as e:
         logging.info(redact_urls(str(e), sources=(url,)))
@@ -643,8 +699,14 @@ def _finish_download(
     expected_sha256: str | None,
     checksum_hint: str | None,
     use_cache: bool = True,
+    cancel_event: CancelEvent | None = None,
 ) -> bool:
-    if not verify_download_sha256(partial_dest, expected_sha256):
+    def repair(pin: str) -> bool:
+        source = _read_source(Path(partial_dest))
+        revision = source[1] if source is not None else segmented.Revision()
+        return repair_bgzf(partial_dest, url, revision, pin, cancel_event)
+
+    if not _verify_download_sha256(partial_dest, expected_sha256, repair=repair):
         Path(partial_dest + ".source").unlink(missing_ok=True)
         return False
     Path(partial_dest).replace(dest)
