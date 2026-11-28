@@ -597,6 +597,16 @@ test("an action keeps other pages' library lists cached unless it is in their co
   reset();
   invalidateAfterFieldChange(["ref_path"]);
   assert.deepEqual(cached(), ["control:tools"]);
+  // Placeholders are read as interpolation reads them: spaces and a config. prefix still name the field.
+  for (const placeholder of ["{{ ref_path }}", "{{config.ref_path}}", "{{ref_path.all}}"]) {
+    reset();
+    state.manifest.pages[1].sections[0].controls[0].dataSource.arguments = ["--json", "ref", "library", "--list", placeholder];
+    invalidateAfterFieldChange(["ref_path"]);
+    assert.deepEqual(cached(), ["control:tools"], placeholder);
+  }
+  reset();
+  invalidateAfterFieldChange(["ref"]);
+  assert.deepEqual(cached(), ["control:genomes", "control:tools"]);
 });
 
 test("renders genome build values as colorful library table pills", async () => {

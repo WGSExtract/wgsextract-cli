@@ -95,6 +95,19 @@ def test_list_describes_the_computer(host, capsys):
     assert all(0 <= disk["free"] <= disk["total"] for disk in computer["disks"])
 
 
+def test_list_reports_the_disks_holding_the_genome_libraries(host, capsys, tmp_path):
+    """Reference genomes and My Genomes can sit on their own drive."""
+    cfg = tmp_path / "config.toml"
+    genomes = (tmp_path / "g").as_posix()
+    cfg.write_text(f'reference_genome_library = "{genomes}"\n', encoding="utf-8")
+    _, document = _json(capsys, "--config", str(cfg), "deps", "list")
+
+    disks = document["details"]["host"]["disks"]
+    places = [p for disk in disks for p in disk["used_for"]]
+    assert "reference genomes" in places
+    assert "My Genomes" in places
+
+
 def test_list_still_lists_tools_when_the_computer_wont_describe_itself(
     host, capsys, monkeypatch
 ):

@@ -64,6 +64,15 @@ export function invalidateAfterFieldChange(ids: readonly string[]) {
     const lists = cachedLists();
     invalidateDataSources((key) => {
         const list = lists.get(key);
-        return !list || ids.some((id) => list.source.includes(`{{${id}`));
+        if (!list) {
+            return true;
+        }
+        const used = placeholderNames(list.source);
+        return ids.some((id) => used.some((name) => name === id || name.startsWith(`${id}.`)));
     });
+}
+
+/** The fields a command's placeholders name, as interpolation reads them: `{{ ref_path }}` and `{{config.ref_path}}` both name ref_path. */
+function placeholderNames(source: string): string[] {
+    return [...source.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)].map((match) => match[1]!.replace(/^config\./, ""));
 }

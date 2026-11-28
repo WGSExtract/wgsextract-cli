@@ -123,17 +123,19 @@ def _host_details(psutil: ModuleType) -> dict[str, object]:
 def _disks() -> list[dict[str, object]]:
     import tempfile
 
-    from wgsextract_cli.core.config import settings
+    from wgsextract_cli.core.config import mygenomes_library, settings
     from wgsextract_cli.core.temp_directory import configured_temp_directory
     from wgsextract_cli.core.users_workspace import users_workspace
 
     places: dict[str, Path] = {"workspace": users_workspace()}
     for key, label in (
         ("reference_library", "reference library"),
+        ("reference_genome_library", "reference genomes"),
         ("output_directory", "output folder"),
     ):
         if settings.get(key):
             places[label] = Path(str(settings[key])).expanduser()
+    places["My Genomes"] = Path(mygenomes_library()).expanduser()
     places["temporary files"] = Path(
         configured_temp_directory() or tempfile.gettempdir()
     )
