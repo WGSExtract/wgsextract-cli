@@ -2,7 +2,7 @@ import os
 import shlex
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from types import SimpleNamespace
 
 import pytest
@@ -15,6 +15,7 @@ from wgsextract_cli.core.paths import (
     append_suffix,
     expand_path,
     java_local_path,
+    sqlite_readonly_uri,
     windows_local_app_dir,
 )
 from wgsextract_cli.core.ref_library.assets import input_stem, reference_dict_path
@@ -26,6 +27,13 @@ from wgsextract_cli.core.utils import (
     run_command,
 )
 from wgsextract_cli.core.variant_files import ensure_vcf_prepared, verify_paths_exist
+
+
+def test_1682_sqlite_unc_uri_puts_the_share_in_the_path() -> None:
+    database = PureWindowsPath(r"\\server\share\GTEx #100%.sqlite")
+    assert sqlite_readonly_uri(database, immutable=True) == (
+        "file:////server/share/GTEx%20%23100%25.sqlite?mode=ro&immutable=1"
+    )
 
 
 @pytest.mark.parametrize(

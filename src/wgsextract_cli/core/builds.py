@@ -118,12 +118,12 @@ def is_hg37_build(build: str) -> bool:
     return key in HG37_BUILD_ALIASES or key in _HG37_EXTRA_MODELS
 
 
-def is_hg38_build(build: str) -> bool:
+def is_hg38_build(build: str, *, exact: bool = False) -> bool:
     key = _build_key(build)
     return (
         key in HG38_BUILD_ALIASES
         or key in _HG38_EXTRA_MODELS
-        or key.startswith("hs38d1")
+        or (not exact and key.startswith("hs38d1"))
     )
 
 
@@ -132,13 +132,13 @@ def is_t2t_build(build: str) -> bool:
     return key in T2T_BUILD_ALIASES or key in _T2T_EXTRA_MODELS
 
 
-def canonical_build(build: str | None) -> str | None:
-    """Map any recognized build alias to "hg19", "hg38" or "t2t"."""
+def canonical_build(build: str | None, *, exact: bool = False) -> str | None:
+    """Map a build alias to "hg19", "hg38" or "t2t"; exact skips prefix matching."""
     if not build:
         return None
     if is_hg37_build(build):
         return "hg19"
-    if is_hg38_build(build):
+    if is_hg38_build(build, exact=exact):
         return "hg38"
     if is_t2t_build(build):
         return "t2t"

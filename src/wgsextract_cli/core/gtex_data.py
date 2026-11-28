@@ -17,6 +17,7 @@ from tempfile import TemporaryDirectory
 from wgsextract_cli.core import read_scope, resource_releases
 from wgsextract_cli.core.atomic_output import publish_output_set
 from wgsextract_cli.core.download_progress import CancelEvent
+from wgsextract_cli.core.paths import sqlite_readonly_uri
 from wgsextract_cli.core.ref_library.assets import resolve_reference_library
 from wgsextract_cli.core.ref_library.downloads import download_file
 from wgsextract_cli.core.table_writer import require_pyarrow
@@ -129,7 +130,7 @@ def open_track(
                 and digest != _sha256(table, cancel)
             ):
                 raise WGSExtractError(missing(table))
-            uri = table.absolute().as_uri() + "?mode=ro&immutable=1"
+            uri = sqlite_readonly_uri(table.absolute(), immutable=True)
             db = connection.enter_context(closing(sqlite3.connect(uri, uri=True)))
             db.execute("PRAGMA trusted_schema=OFF")
             sample = db.execute(

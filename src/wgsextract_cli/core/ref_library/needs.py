@@ -546,7 +546,11 @@ def annotation_need(command: str, args: argparse.Namespace) -> AnnotationNeed | 
         return None  # The command reports the missing FASTA itself.
     lib = ReferenceLibrary(ref, None, input_path=vcf)
     reported_build = lib.build
-    installed = getattr(lib, annotation.attribute, None)
+    installed = (
+        None
+        if annotation.resource == "gtex"
+        else getattr(lib, annotation.attribute, None)
+    )
     if annotation.resource in {"regulatory", "gtex"}:
         from wgsextract_cli.core import gtex_data, regulatory_data, regulatory_overlap
         from wgsextract_cli.core.utils import UsageError
@@ -566,12 +570,9 @@ def annotation_need(command: str, args: argparse.Namespace) -> AnnotationNeed | 
             and not regulatory_data.provenance(Path(installed), verify=True)
         ):
             installed = None
-        if (
-            annotation.resource == "gtex"
-            and installed
-            and not gtex_data.installed(Path(installed), verify=True)
-        ):
-            installed = None
+        if annotation.resource == "gtex":
+            table = gtex_data.path(lib.root)
+            installed = str(table) if gtex_data.installed(table, verify=True) else None
     if annotation.option:
         if given := _given_path(args, annotation.option):
             return AnnotationNeed(

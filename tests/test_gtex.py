@@ -14,8 +14,9 @@ from pathlib import Path
 import pytest
 from smoke_utils import run_cli
 
-from tests.http_server import serving
+from tests.http_server import RangeServer, serving
 from wgsextract_cli import api
+from wgsextract_cli.commands.ref.needs import check_command
 from wgsextract_cli.core import resource_releases
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.utils import run_command
@@ -426,6 +427,26 @@ def test_1662_ref_gtex_rejects_and_repairs_corruption(
             row for row in csv.DictReader(stream, delimiter="\t") if row["pos"] == "20"
         )
     assert repaired["pip"] == "1.0"
+
+
+def test_1682_ref_needs_agrees_with_gtex_when_an_association_is_deleted(
+    tmp_path: Path, sample: Path, gtex_bundle: tuple[RangeServer, str]
+) -> None:
+    library = tmp_path / "library"
+    result = api.ref.gtex(api.RefGtexParams(ref=library, download=True))
+    (track,) = (file.path for file in result.outputs if file.role == "gtex_track")
+    args = [
+        "vcf", "gtex", "--input", str(sample), "--ref", str(library),
+    ]  # fmt: skip
+    assert not check_command(args)
+
+    with closing(sqlite3.connect(track)) as db, db:
+        db.execute("DELETE FROM association WHERE pos=20")
+
+    (need,) = check_command(args)
+    assert need.id == "gtex" and "--download" in (need.install_arguments or [])
+    with pytest.raises(api.CommandFailed, match=r"missing or damaged"):
+        api.vcf.gtex(api.VcfGtexParams(input=sample, ref=library, network="off"))
 
 
 def test_1662_gtex_refuses_grch37_without_replacing_sidecar(tmp_path, sample):
