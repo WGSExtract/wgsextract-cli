@@ -22,7 +22,7 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.12.6",
-    "@types/node": "^26.6.6",
+    "@types/node": "^26.6.10",
     "bootstrap-icons": "^1.13.2",
     "jscpd": "^5.4.3",
     "playwright": "^1.65.1",
