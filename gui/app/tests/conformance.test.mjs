@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
-import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { parseJsonWithComments } from "../dist/shared/json-comments.js";
 import { conditionMatches, disabledReason, displayCommand, hydrateRows, isActionVisible, isSectionVisible, missingPlaceholders } from "../dist/shared/rendering.js";
 import { readsLastResultDocument } from "../dist/shared/last-result-documents.js";
@@ -22,11 +21,11 @@ for (const planPath of [
   path.join(wgsExtractBundleRoot, "test-plans/fresh-install-default-hg19-test-genome.json"),
 ]) {
   test(`#1680: ${path.basename(planPath)} data sources resolve against the current app`, async (t) => {
-    const workspaceURL = await mkdtemp(path.join(tmpdir(), "wgsextract-plan-"));
-    t.after(() => rm(workspaceURL, { recursive: true, force: true }));
+    const bundleRoot = await exampleBundleCopy(t);
+    const workspaceURL = path.join(path.dirname(bundleRoot), "workspace");
     const plan = await loadBundleTestPlan(planPath);
     const steps = plan.steps.filter((step) => step.kind === "dataSource");
-    const report = await runBundleTest(wgsExtractBundleRoot, { ...plan, steps }, {
+    const report = await runBundleTest(bundleRoot, { ...plan, steps }, {
       workspaceURL,
       dryRun: true,
       bootstrapConfig: false,
