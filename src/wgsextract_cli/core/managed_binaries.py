@@ -5,7 +5,8 @@ Each release is pinned by URL and SHA-256, downloaded only by an explicit
 ``deps install``, and unpacked under ``managed_binary_dir(tool)``: a release
 folder as ``release`` whatever its version, so a newer pin replaces it. A
 reinstall or uninstall first moves the old copy aside, so a file in use leaves
-it whole. Uninstall removes only what install unpacked: that folder may hold
+it whole; removing that copy afterwards is best-effort. A per-tool lock lets one
+install or uninstall of a tool run at a time. Uninstall removes only what install unpacked: that folder may hold
 the user's files.
 A release under a restrictive licence (Dorado's is research-only) installs only
 once the user accepts it (``deps install TOOL --accept-license``).
@@ -18,11 +19,15 @@ import platform
 import shutil
 import stat
 import sys
+import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 from wgsextract_cli.core import windows_arm64
+from wgsextract_cli.core.file_lock import build_lock
 from wgsextract_cli.core.utils import (
     MissingDependencyError,
     UsageError,
@@ -296,55 +301,95 @@ def _remove(path: Path) -> None:
 
 
 def _set_aside(path: Path) -> Path | None:
-    """Rename ``path`` to ``.old-<name>`` beside it (on Windows this fails,
-    untouched, while a file in it is in use); None when there is no ``path``."""
+    """Rename ``path`` to a ``.old-<name>-*`` name of this call's own beside it
+    (on Windows this fails, untouched, while a file in it is in use); None
+    when there is no ``path``."""
     if not (path.exists() or path.is_symlink()):
         return None
-    aside = path.with_name(f".old-{path.name}")
-    _remove(aside)
+    aside = path.with_name(f".old-{path.name}-{uuid.uuid4().hex[:12]}")
     path.replace(aside)
     return aside
+
+
+def _retire(tool: str, aside: Path) -> None:
+    """Remove a release already swapped out (or a leftover). The swap is the
+    commit, so a failure here only leaves it behind, with a warning naming it."""
+    from wgsextract_cli.core.results import warn
+
+    try:
+        _remove(aside)
+    except OSError as error:
+        warn(
+            "managed_release_left",
+            f"Couldn't remove the old {tool} files at {aside} "
+            f"(delete them yourself): {error}",
+            path=str(aside),
+        )
+
+
+def _sweep(tool: str, folder: Path) -> None:
+    """Remove what an interrupted install or uninstall left in ``folder``."""
+    for leftover in [*folder.glob(".unpacking-*"), *folder.glob(".old-*")]:
+        _retire(tool, leftover)
+
+
+@contextmanager
+def _tool_lock(tool: str) -> Iterator[None]:
+    """One install or uninstall of ``tool`` at a time, across processes."""
+    parent = managed_binary_dir(tool).parent
+    parent.mkdir(parents=True, exist_ok=True)
+    with build_lock(str(parent / f".{tool}.lock")):
+        yield
 
 
 def install(tool: str, spec: ManagedBinary, *, accept_license: bool) -> dict[str, Any]:
     """Download ``spec``'s archive, check its SHA-256, and unpack only
     ``spec.unpack`` into ``managed_binary_dir(tool)``."""
-    import tarfile
-    import zipfile
-
-    from wgsextract_cli.core.dependencies import clear_tool_caches, get_tool_path
-    from wgsextract_cli.core.ref_library.downloads import download_file
-
     if spec.license and not accept_license:
         raise UsageError(
             f"{tool} is licensed under the {spec.license.name}: "
             f"{spec.license.terms} (read it at {spec.license.url}). To accept "
             f"it and install, run: wgsextract deps install {tool} --accept-license"
         )
+    with _tool_lock(tool):
+        return _install(tool, spec)
+
+
+def _install(tool: str, spec: ManagedBinary) -> dict[str, Any]:
+    import tarfile
+    import tempfile
+    import zipfile
+
+    from wgsextract_cli.core.dependencies import clear_tool_caches, get_tool_path
+    from wgsextract_cli.core.ref_library.downloads import download_file
+
     dest = managed_binary_dir(tool)
     dest.mkdir(parents=True, exist_ok=True)
-    archive = dest / spec.url.rsplit("/", 1)[-1]
-    staging = dest / ".unpacking"
-    logging.info(f"Downloading {tool} {spec.version} ({spec.size_label})...")
-    ok = download_file(
-        spec.url,
-        str(archive),
-        expected_sha256=spec.sha256,
-        use_mirrors=False,
-        resolve_release_digest=False,
-        large=spec.large,
-    )
-    if not ok or not archive.is_file():
-        raise WGSExtractError(f"Failed to download {tool} from {spec.url}.")
+    _sweep(tool, dest)
+    # This call's own folder holds the archive and what it unpacks.
+    staging = Path(tempfile.mkdtemp(prefix=".unpacking-", dir=dest))
+    archive = staging / spec.url.rsplit("/", 1)[-1]
     target = dest / spec.installed
+    aside = None
     try:
-        _remove(staging)
-        staging.mkdir()
+        logging.info(f"Downloading {tool} {spec.version} ({spec.size_label})...")
+        ok = download_file(
+            spec.url,
+            str(archive),
+            expected_sha256=spec.sha256,
+            use_mirrors=False,
+            resolve_release_digest=False,
+            large=spec.large,
+        )
+        if not ok or not archive.is_file():
+            raise WGSExtractError(f"Failed to download {tool} from {spec.url}.")
+        unpacked_into = staging / "release"
+        unpacked_into.mkdir()
         if archive.name.endswith(".zip"):
-            _unpack_zip(archive, spec, staging)
+            _unpack_zip(archive, spec, unpacked_into)
         else:
-            _unpack_tar(archive, spec, staging)
-        unpacked = staging / spec.unpack.rstrip("/")
+            _unpack_tar(archive, spec, unpacked_into)
+        unpacked = unpacked_into / spec.unpack.rstrip("/")
         if not (unpacked.exists() or unpacked.is_symlink()):
             raise KeyError(spec.unpack)
         if unpacked.is_dir():
@@ -355,12 +400,11 @@ def install(tool: str, spec: ManagedBinary, *, accept_license: bool) -> dict[str
         except OSError:
             if aside is not None:
                 aside.replace(target)
+                aside = None
             raise
         executable = dest / spec.executable
         if executable.is_file():
             executable.chmod(executable.stat().st_mode | 0o755)
-        if aside is not None:
-            _remove(aside)
     except (KeyError, zipfile.BadZipFile, tarfile.TarError) as error:
         raise WGSExtractError(
             f"The {tool} download from {spec.url} isn't the expected archive: {error}"
@@ -370,10 +414,10 @@ def install(tool: str, spec: ManagedBinary, *, accept_license: bool) -> dict[str
             f"Couldn't unpack {tool} into {dest} (is it running?): {error}"
         ) from error
     finally:
-        archive.unlink(missing_ok=True)
-        if staging.exists():
-            _remove(staging)
+        shutil.rmtree(staging, ignore_errors=True)
 
+    if aside is not None:
+        _retire(tool, aside)
     clear_tool_caches()
     path = get_tool_path(tool)
     if not path:
@@ -394,20 +438,28 @@ def uninstall(tool: str, spec: ManagedBinary) -> dict[str, Any]:
     from wgsextract_cli.core.dependencies import clear_tool_caches
 
     folder = managed_binary_dir(tool)
-    if not is_managed(tool):
-        raise WGSExtractError(f"No WGS Extract-managed {tool} is installed to remove.")
-    logging.info(f"Removing {tool} from {folder}...")
-    try:
-        aside = _set_aside(folder / spec.installed)
+    with _tool_lock(tool):
+        if not is_managed(tool):
+            raise WGSExtractError(
+                f"No WGS Extract-managed {tool} is installed to remove."
+            )
+        logging.info(f"Removing {tool} from {folder}...")
+        _sweep(tool, folder)
+        try:
+            # The rename is the commit: after it, the tool is uninstalled.
+            aside = _set_aside(folder / spec.installed)
+        except OSError as error:
+            raise WGSExtractError(
+                f"Couldn't remove {tool} from {folder} (is it running?): {error}"
+            ) from error
         if aside is not None:
-            _remove(aside)
-        if not any(folder.iterdir()):
-            folder.rmdir()
-    except OSError as error:
-        raise WGSExtractError(
-            f"Couldn't remove {tool} from {folder} (is it running?): {error}"
-        ) from error
-    clear_tool_caches()
+            _retire(tool, aside)
+        try:
+            if not any(folder.iterdir()):
+                folder.rmdir()
+        except OSError as error:
+            logging.debug(f"Kept {folder}: {error}")
+        clear_tool_caches()
     return {
         "tool": tool,
         "environment": ENVIRONMENT,
