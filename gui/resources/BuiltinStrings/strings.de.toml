@@ -64,7 +64,7 @@
 "app.network.modeOff" = "Aus"  # i18n-source-hash:e3de5ab0
 "app.network.notNow" = "Nicht jetzt"  # i18n-source-hash:e4571490
 "app.network.saveError" = "Die Netzwerkeinstellungen konnten nicht gespeichert werden. Versuchen Sie es erneut."  # i18n-source-hash:7eecfa8b
-"app.network.settingsDetail" = "Automatisch verwendet den sparsamen Modus bei getakteten oder eingeschränkten Verbindungen und bei unbekannten Verbindungskosten. Große Downloads erfordern dann eine Bestätigung. Aus sperrt den Netzwerkzugriff."  # i18n-source-hash:520425e8
+"app.network.settingsDetail" = "Automatisch verwendet den sparsamen Modus bei getakteten oder eingeschränkten Verbindungen und bei unbekannten Verbindungskosten. Große Downloads erfordern dann eine Bestätigung. Aus sperrt den Netzwerkzugriff. Ältere mitgelieferte CLI-Versionen beachten den sparsamen Modus und Aus nicht, sondern verwenden ihre eigene Download-Freigabe."  # i18n-source-hash:2bcb117b
 "app.network.title" = "Netzwerk und Datenschutz"  # i18n-source-hash:ac0186fe
 "app.page.empty.title" = "Keine Seiten"  # i18n-source-hash:d269aee1
 "app.pathPicker.chooseButton.title" = "Auswählen..."  # i18n-source-hash:1f77e839

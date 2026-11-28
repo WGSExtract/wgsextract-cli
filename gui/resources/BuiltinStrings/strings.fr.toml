@@ -64,7 +64,7 @@
 "app.network.modeOff" = "Désactivé"  # i18n-source-hash:e3de5ab0
 "app.network.notNow" = "Pas maintenant"  # i18n-source-hash:e4571490
 "app.network.saveError" = "Impossible d’enregistrer les paramètres réseau. Réessayez."  # i18n-source-hash:7eecfa8b
-"app.network.settingsDetail" = "Le mode automatique utilise le mode réduit si la connexion est limitée, facturée à l’usage ou de coût inconnu. Le mode réduit demande une confirmation pour les téléchargements volumineux. Le mode désactivé bloque l’accès au réseau."  # i18n-source-hash:520425e8
+"app.network.settingsDetail" = "Le mode automatique utilise le mode réduit si la connexion est limitée, facturée à l’usage ou de coût inconnu. Le mode réduit demande une confirmation pour les téléchargements volumineux. Le mode désactivé bloque l’accès au réseau. Les anciennes versions de la CLI fournies utilisent leurs propres autorisations de téléchargement au lieu d’appliquer les modes réduit et désactivé."  # i18n-source-hash:2bcb117b
 "app.network.title" = "Réseau et confidentialité"  # i18n-source-hash:ac0186fe
 "app.page.empty.title" = "Aucune page"  # i18n-source-hash:d269aee1
 "app.pathPicker.chooseButton.title" = "Choisir..."  # i18n-source-hash:1f77e839

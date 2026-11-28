@@ -64,7 +64,7 @@
 "app.network.modeOff" = "Off"
 "app.network.notNow" = "Not now"
 "app.network.saveError" = "Could not save network settings. Try again."
-"app.network.settingsDetail" = "Automatic uses Low on metered, constrained, or unknown connections. Low requires confirmation for large downloads. Off blocks network access."
+"app.network.settingsDetail" = "Automatic uses Low on metered, constrained, or unknown connections. Low requires confirmation for large downloads. Off blocks network access. Older bundled CLIs use their own download consent instead of Low or Off."
 "app.network.title" = "Network & Privacy"
 "app.page.empty.title" = "No Pages"
 "app.pathPicker.chooseButton.title" = "Choose..."
