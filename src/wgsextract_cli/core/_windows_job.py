@@ -30,6 +30,9 @@ if sys.platform == "win32":
     _query = _kernel32.QueryInformationJobObject
     _query.argtypes = [*_set_info.argtypes, ctypes.POINTER(wintypes.DWORD)]
     _query.restype = wintypes.BOOL
+    _terminate = _kernel32.TerminateJobObject
+    _terminate.argtypes = [wintypes.HANDLE, wintypes.UINT]
+    _terminate.restype = wintypes.BOOL
     _close = _kernel32.CloseHandle
     _close.argtypes = [wintypes.HANDLE]
     _close.restype = wintypes.BOOL
@@ -85,6 +88,7 @@ class WindowsJob:
                 raise ctypes.WinError(ctypes.get_last_error())
             self._handle = handle
             self._close = weakref.finalize(self, _close, handle)
+            self._close.atexit = False  # The registry terminates live jobs at exit.
             limits = _ExtendedLimits()
             limits.BasicLimitInformation.LimitFlags = (
                 _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
@@ -130,3 +134,17 @@ class WindowsJob:
         if sys.platform == "win32":
             with self._lock:
                 self._close()
+
+    def terminate(self) -> None:
+        if sys.platform == "win32":
+            with self._lock:
+                try:
+                    # Kill-on-close alone can give cancelled tools exit code 0.
+                    if self._close.alive and not _terminate(self._handle, 1):
+                        if self._close.alive:
+                            logging.warning(
+                                "Could not terminate the Windows job: %s",
+                                ctypes.WinError(ctypes.get_last_error()),
+                            )
+                finally:
+                    self._close()

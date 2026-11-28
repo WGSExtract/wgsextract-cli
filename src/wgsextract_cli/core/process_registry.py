@@ -75,6 +75,21 @@ class ProcessRegistry:
             terminate_trees([process])
 
     def unregister_process(self, key: str, process: subprocess.Popen[Any]) -> None:
+        if sys.platform == "win32" and (job := _owned_jobs.get(process)):
+            if job.has_processes():
+                from wgsextract_cli.core.execution_context import context_thread
+
+                # Returning from the launcher is not a request to stop its tools.
+                def unregister_after_job() -> None:
+                    while job.has_processes():
+                        time.sleep(0.1)
+                    self._unregister_process(key, process)
+
+                context_thread(unregister_after_job, daemon=True).start()
+                return
+        self._unregister_process(key, process)
+
+    def _unregister_process(self, key: str, process: subprocess.Popen[Any]) -> None:
         with self._lock:
             processes = self.processes.get(key)
             if not processes:
@@ -181,14 +196,29 @@ def wait_for_pipeline(
 
 def _terminate_windows_trees(processes: list[subprocess.Popen[Any]]) -> None:
     unowned = []
+    owned = []
     for proc in processes:
         if job := _owned_jobs.get(proc):
-            job.close()
+            job.terminate()
+            owned.append(proc)
         else:
             unowned.append(proc)
 
+    _terminate_unowned_windows_trees(unowned)
+    deadline = time.monotonic() + 2
+    for proc in owned:
+        try:
+            # Wait for the launcher itself, not any pipe relays in _RelayedPopen.
+            subprocess.Popen.wait(proc, timeout=max(0.0, deadline - time.monotonic()))
+        except subprocess.TimeoutExpired:
+            logging.warning("Timed out waiting for cancelled process %s.", proc.pid)
+
+
+def _terminate_unowned_windows_trees(
+    processes: list[subprocess.Popen[Any]],
+) -> None:
     command = ["taskkill", "/F", "/T"]
-    pids = [str(proc.pid) for proc in unowned if proc.poll() is None]
+    pids = [str(proc.pid) for proc in processes if proc.poll() is None]
     if not pids:
         return
     for pid in pids:
@@ -205,7 +235,7 @@ def _terminate_windows_trees(processes: list[subprocess.Popen[Any]]) -> None:
             )
     except (OSError, subprocess.TimeoutExpired):
         logging.warning("Process %s could not be terminated.", label, exc_info=True)
-    for proc in unowned:
+    for proc in processes:
         if proc.poll() is None:
             try:
                 proc.kill()
@@ -213,13 +243,6 @@ def _terminate_windows_trees(processes: list[subprocess.Popen[Any]]) -> None:
                 logging.debug(
                     "Process %s could not be killed.", proc.pid, exc_info=True
                 )
-
-
-def wait_for_job(process: subprocess.Popen[Any]) -> None:
-    """Keep an async Windows tool registered while its descendants still run."""
-    if sys.platform == "win32" and (job := _owned_jobs.get(process)):
-        while job.has_processes():
-            time.sleep(0.1)
 
 
 def terminate_trees(processes: list[subprocess.Popen[Any]]) -> None:

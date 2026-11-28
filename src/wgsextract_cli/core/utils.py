@@ -47,7 +47,6 @@ from wgsextract_cli.core.process_registry import (
     process_group_kwargs,
     remember_process_group,
     terminate_trees,
-    wait_for_job,
     wait_for_pipeline,
 )
 from wgsextract_cli.core.process_registry import (
@@ -564,7 +563,6 @@ def popen(
 
     def _unregister_finished_process() -> None:
         process.wait()
-        wait_for_job(process)
         proc_registry.unregister_process(cmd_str, process)
 
     execution_context.context_thread(
